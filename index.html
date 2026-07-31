@@ -2,66 +2,124 @@
 <html lang="de">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#0b0d12">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
 <title>Der Smaragdsplitter — 3D Action-Adventure</title>
 <style>
-  * { margin:0; padding:0; box-sizing:border-box; }
-  html,body { width:100%; height:100%; overflow:hidden; background:#0b0d12;
-    font-family:"Trebuchet MS","Segoe UI",system-ui,sans-serif; color:#f3ecd8; user-select:none; }
-  #c { display:block; position:fixed; inset:0; cursor:crosshair; }
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body { width:100%; height:100%; overflow:hidden; background:#0b0d12; overscroll-behavior:none;
+    font-family:"Trebuchet MS","Segoe UI",system-ui,sans-serif; color:#f3ecd8; user-select:none; -webkit-user-select:none; touch-action:none; }
+  #c { display:block; position:fixed; inset:0; }
+
+  /* ---------- Sprite-Icons ---------- */
+  .ic { display:inline-block; width:30px; height:30px; vertical-align:middle;
+        background-size:1000% 100%; background-repeat:no-repeat;
+        background-position: calc(var(--i) / 9 * 100%) 0; }
+  .ic-heart{--i:0} .ic-heart-half{--i:1} .ic-heart-empty{--i:2} .ic-rupee{--i:3}
+  .ic-key{--i:4} .ic-bomb{--i:5} .ic-arrow{--i:6} .ic-potion{--i:7} .ic-sword{--i:8} .ic-shield{--i:9}
+  .ic.sm { width:22px; height:22px; }
+  .ic.lg { width:42px; height:42px; }
 
   /* ---------- HUD ---------- */
   #hud { display:none; position:fixed; inset:0; pointer-events:none; }
-  .panel { background:linear-gradient(180deg,rgba(30,24,16,.82),rgba(18,14,10,.86));
+  .panel { background:linear-gradient(180deg,rgba(30,24,16,.82),rgba(18,14,10,.88));
     border:2px solid #b99a4e; border-radius:10px; box-shadow:0 4px 18px rgba(0,0,0,.5), inset 0 0 0 1px rgba(255,235,180,.15); }
-  #topleft { position:absolute; top:14px; left:14px; padding:10px 14px; }
-  #hearts { font-size:26px; line-height:1; letter-spacing:2px; }
-  .heart.full { color:#e8354a; text-shadow:0 0 8px rgba(232,53,74,.6); }
-  .heart.half { color:#e8354a; opacity:.55; }
-  .heart.empty { color:#5d4a3a; }
-  #items { margin-top:9px; display:flex; gap:14px; font-size:15px; align-items:center; }
-  #items span.k { color:#e9d9a8; }
-  #items b { color:#fff; font-size:17px; }
-  #mapwrap { position:absolute; top:14px; right:14px; padding:8px; }
+  #topleft { position:absolute; top:12px; left:12px; padding:9px 13px; }
+  #hearts { line-height:0; }
+  #hearts .ic { margin-right:1px; filter:drop-shadow(0 1px 2px rgba(0,0,0,.6)); }
+  #items { margin-top:7px; display:flex; gap:12px; align-items:center; font-size:15px; }
+  #items b { color:#fff; font-size:16px; margin-left:2px; }
+
+  #mapwrap { position:absolute; top:12px; right:12px; padding:7px; }
   #mini { display:block; width:150px; height:150px; border-radius:6px; background:#0d1a10; }
-  #maplabel { text-align:center; font-size:11px; letter-spacing:2px; color:#c9b071; margin-top:5px; text-transform:uppercase; }
+  #maplabel { text-align:center; font-size:11px; letter-spacing:2px; color:#c9b071; margin-top:4px; text-transform:uppercase; }
+
+  #compass { position:absolute; top:178px; right:12px; padding:6px 10px; display:none; align-items:center; gap:8px; }
+  #compassArrow { font-size:19px; color:#f0d894; line-height:1; display:inline-block; }
+  #compassLabel { font-size:12px; color:#e3d6b0; letter-spacing:1px; }
+
+  #sysbtns { position:absolute; top:12px; right:176px; display:flex; flex-direction:column; gap:6px; pointer-events:auto; }
+  .sysbtn { width:36px; height:36px; border-radius:9px; border:2px solid #b99a4e; background:rgba(20,16,10,.8);
+    color:#f0d894; font-size:17px; cursor:pointer; line-height:1; }
 
   #prompt { display:none; position:absolute; bottom:120px; left:50%; transform:translateX(-50%);
-    padding:9px 18px; font-size:16px; background:rgba(20,16,10,.85); border:2px solid #b99a4e; border-radius:8px; }
-  #prompt b { display:inline-block; background:#b99a4e; color:#241c10; border-radius:5px; padding:1px 8px; margin-right:4px; }
+    padding:9px 18px; font-size:16px; background:rgba(20,16,10,.86); border:2px solid #b99a4e; border-radius:8px; white-space:nowrap; }
+  #prompt b { display:inline-block; background:#b99a4e; color:#241c10; border-radius:5px; padding:1px 8px; }
 
-  #toast { position:absolute; top:26%; left:50%; transform:translateX(-50%); font-size:20px; font-weight:bold;
-    padding:10px 22px; background:rgba(20,16,10,.8); border:2px solid #b99a4e; border-radius:8px;
-    opacity:0; transition:opacity .4s; text-align:center; max-width:70vw; }
+  #toast { position:absolute; top:24%; left:50%; transform:translateX(-50%); font-size:20px; font-weight:bold;
+    padding:10px 22px; background:rgba(20,16,10,.82); border:2px solid #b99a4e; border-radius:8px;
+    opacity:0; transition:opacity .4s; text-align:center; max-width:76vw; }
 
-  #bossbar { display:none; position:absolute; bottom:34px; left:50%; transform:translateX(-50%); width:min(560px,70vw); padding:8px 12px; }
+  #bossbar { display:none; position:absolute; bottom:30px; left:50%; transform:translateX(-50%); width:min(560px,72vw); padding:8px 12px; }
   #bossname { font-size:13px; letter-spacing:3px; color:#e6c86a; margin-bottom:5px; text-transform:uppercase; }
   #bosstrack { height:14px; background:#2a1c18; border-radius:7px; overflow:hidden; border:1px solid #7d5a2c; }
   #bossfill { height:100%; width:100%; background:linear-gradient(90deg,#e8354a,#ff8a3d); transition:width .18s; }
 
-  #dialog { display:none; position:absolute; bottom:38px; left:50%; transform:translateX(-50%);
-    width:min(760px,86vw); padding:16px 20px 18px; pointer-events:none; }
-  #dlgName { color:#e6c86a; font-size:15px; letter-spacing:2px; margin-bottom:7px; text-transform:uppercase; }
+  #dialog { display:none; position:absolute; bottom:34px; left:50%; transform:translateX(-50%);
+    width:min(760px,88vw); padding:15px 20px 16px; }
+  #dlgName { color:#e6c86a; font-size:15px; letter-spacing:2px; margin-bottom:6px; text-transform:uppercase; }
   #dlgText { font-size:19px; line-height:1.5; }
-  #dlgHint { margin-top:10px; font-size:12px; color:#a89a78; text-align:right; }
+  #dlgHint { margin-top:9px; font-size:12px; color:#a89a78; text-align:right; }
+
+  /* ---------- Touch-Steuerung ---------- */
+  #touchUI { display:none; }
+  body.touch #touchUI { display:block; }
+  body.touch #sysbtns { top:auto; bottom:12px; right:12px; flex-direction:row; }
+  #stick { display:none; position:absolute; width:118px; height:118px; margin:-59px 0 0 -59px;
+    border-radius:50%; border:2px solid rgba(240,216,148,.5); background:rgba(20,16,10,.3); }
+  #knob { position:absolute; left:50%; top:50%; width:52px; height:52px; margin:-26px 0 0 -26px;
+    border-radius:50%; background:rgba(240,216,148,.75); border:2px solid #b99a4e; }
+  #btnpad { position:absolute; right:16px; bottom:26px; width:210px; height:210px; pointer-events:auto; }
+  .tbtn { position:absolute; border-radius:50%; border:2px solid #b99a4e; color:#f3ecd8;
+    background:rgba(28,22,14,.72); display:flex; align-items:center; justify-content:center;
+    font-size:14px; font-weight:bold; letter-spacing:.5px; pointer-events:auto; }
+  .tbtn.on { background:rgba(240,216,148,.85); color:#241c10; transform:scale(.94); }
+  #btnA { width:86px; height:86px; right:8px; bottom:52px; font-size:16px; background:rgba(60,30,26,.8); border-color:#e08a5a; }
+  #btnRoll { width:60px; height:60px; right:96px; bottom:6px; }
+  #btnE { width:62px; height:62px; right:104px; bottom:78px; background:rgba(26,44,30,.8); border-color:#7ec98a; }
+  #btnShield { width:56px; height:56px; right:16px; bottom:146px; }
+  #btnBomb { width:52px; height:52px; right:82px; bottom:150px; }
+  #btnBow { width:52px; height:52px; right:140px; bottom:126px; }
+  #btnPotion { width:46px; height:46px; right:158px; bottom:60px; }
 
   /* ---------- Overlays ---------- */
   .overlay { position:fixed; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
-    text-align:center; gap:16px; background:radial-gradient(circle at 50% 40%,rgba(20,30,25,.86),rgba(6,8,10,.96)); z-index:10; }
-  #title h1 { font-size:clamp(34px,6.5vw,68px); letter-spacing:4px; color:#f6e6b4;
+    text-align:center; gap:15px; padding:20px; z-index:10; overflow-y:auto;
+    background:radial-gradient(circle at 50% 40%,rgba(20,34,28,.88),rgba(6,8,10,.97)); }
+  #title h1 { font-size:clamp(30px,6.5vw,66px); letter-spacing:4px; color:#f6e6b4;
     text-shadow:0 0 24px rgba(216,180,90,.5),0 4px 0 #6b4f22; }
-  #title h2 { font-size:clamp(13px,2vw,18px); letter-spacing:7px; color:#9fd4a0; font-weight:normal; margin-top:-8px; }
-  .btn { pointer-events:auto; cursor:pointer; font:inherit; font-size:19px; padding:12px 34px; color:#241c10;
+  #title h2 { font-size:clamp(12px,2vw,17px); letter-spacing:7px; color:#9fd4a0; font-weight:normal; margin-top:-6px; }
+  .btn { pointer-events:auto; cursor:pointer; font:inherit; font-size:18px; padding:12px 30px; color:#241c10;
     background:linear-gradient(180deg,#e8cf86,#b99a4e); border:2px solid #f0e0b0; border-radius:9px; letter-spacing:2px; }
   .btn:hover { filter:brightness(1.12); }
-  .keys { display:grid; grid-template-columns:auto auto; gap:6px 18px; font-size:14.5px; color:#ddd2b4;
-    background:rgba(0,0,0,.35); padding:16px 24px; border-radius:10px; border:1px solid rgba(185,154,78,.4); }
+  .btn.sec { background:linear-gradient(180deg,#8fb48f,#5d8a63); color:#101a12; border-color:#bfe0bf; }
+  .btnrow { display:flex; gap:12px; flex-wrap:wrap; justify-content:center; }
+  .keys { display:grid; grid-template-columns:auto auto; gap:5px 18px; font-size:14px; color:#ddd2b4;
+    background:rgba(0,0,0,.35); padding:14px 22px; border-radius:10px; border:1px solid rgba(185,154,78,.4); }
   .keys i { color:#f0d894; font-style:normal; font-weight:bold; }
-  #over h1 { color:#e8354a; font-size:52px; letter-spacing:6px; }
-  #win h1 { color:#8ef0a8; font-size:clamp(30px,5vw,54px); letter-spacing:4px; text-shadow:0 0 30px rgba(120,240,160,.5); }
-  #pause h1 { font-size:36px; letter-spacing:6px; color:#f0d894; }
-  #over, #win, #pause { display:none; }
-  .small { font-size:14px; color:#b6ab90; max-width:520px; line-height:1.6; }
+  body.touch .keys.desktoponly { display:none; }
+  .keys.touchonly { display:none; }
+  body.touch .keys.touchonly { display:grid; }
+  #over h1 { color:#e8354a; font-size:clamp(32px,6vw,52px); letter-spacing:6px; }
+  #win h1 { color:#8ef0a8; font-size:clamp(26px,5vw,52px); letter-spacing:4px; text-shadow:0 0 30px rgba(120,240,160,.5); }
+  #pause h1 { font-size:34px; letter-spacing:6px; color:#f0d894; }
+  #over, #win, #pause, #shop { display:none; }
+  .small { font-size:14px; color:#b6ab90; max-width:540px; line-height:1.6; }
+
+  /* ---------- Laden ---------- */
+  #shopbox { width:min(460px,92vw); padding:20px 22px; }
+  #shopbox h2 { font-size:22px; color:#f0d894; letter-spacing:3px; margin-bottom:4px; }
+  #shopRupeeLine { font-size:15px; color:#c9e8c9; margin-bottom:14px; }
+  #shopList { display:flex; flex-direction:column; gap:9px; }
+  .shopitem { display:flex; align-items:center; gap:11px; padding:9px 11px; border-radius:8px;
+    background:rgba(0,0,0,.28); border:1px solid rgba(185,154,78,.35); }
+  .shopitem .nm { flex:1; text-align:left; font-size:15px; }
+  .shopitem .pr { font-size:14px; color:#8ef0a8; min-width:66px; text-align:right; }
+  .buy { pointer-events:auto; cursor:pointer; font:inherit; font-size:13px; padding:7px 13px; border-radius:7px;
+    border:2px solid #f0e0b0; background:linear-gradient(180deg,#e8cf86,#b99a4e); color:#241c10; letter-spacing:1px; }
+  .buy:disabled { opacity:.4; cursor:not-allowed; }
 </style>
 </head>
 <body>
@@ -71,26 +129,50 @@
   <div id="topleft" class="panel">
     <div id="hearts"></div>
     <div id="items">
-      <span><span class="k">◆</span> <b id="rupees">0</b></span>
-      <span><span class="k">⚿</span> <b id="keys">0</b></span>
-      <span><span class="k">✹</span> <b id="bombs">–</b></span>
-      <span><span class="k">➶</span> <b id="arrows">–</b></span>
+      <span><i class="ic ic-rupee sm"></i><b id="rupees">0</b></span>
+      <span><i class="ic ic-key sm"></i><b id="keys">0</b></span>
+      <span><i class="ic ic-bomb sm"></i><b id="bombs">–</b></span>
+      <span><i class="ic ic-arrow sm"></i><b id="arrows">–</b></span>
+      <span><i class="ic ic-potion sm"></i><b id="potions">0</b></span>
     </div>
   </div>
+
   <div id="mapwrap" class="panel">
     <canvas id="mini" width="150" height="150"></canvas>
     <div id="maplabel">Karte</div>
   </div>
+  <div id="compass" class="panel"><span id="compassArrow">➤</span><span id="compassLabel"></span></div>
+
+  <div id="sysbtns">
+    <button id="musicBtn" class="sysbtn" title="Musik an/aus">♪</button>
+    <button id="fsBtn" class="sysbtn" title="Vollbild">⛶</button>
+  </div>
+
   <div id="prompt"></div>
   <div id="toast"></div>
+
   <div id="bossbar" class="panel">
     <div id="bossname">Steingolem der Ruine</div>
     <div id="bosstrack"><div id="bossfill"></div></div>
   </div>
+
   <div id="dialog" class="panel">
     <div id="dlgName"></div>
     <div id="dlgText"></div>
-    <div id="dlgHint">[E] / Leertaste — weiter</div>
+    <div id="dlgHint">[E] / Leertaste / Tippen — weiter</div>
+  </div>
+
+  <div id="touchUI">
+    <div id="stick"><div id="knob"></div></div>
+    <div id="btnpad">
+      <div id="btnA" class="tbtn">SCHWERT</div>
+      <div id="btnRoll" class="tbtn">ROLLE</div>
+      <div id="btnE" class="tbtn">AKTION</div>
+      <div id="btnShield" class="tbtn"><i class="ic ic-shield sm"></i></div>
+      <div id="btnBomb" class="tbtn"><i class="ic ic-bomb sm"></i></div>
+      <div id="btnBow" class="tbtn"><i class="ic ic-arrow sm"></i></div>
+      <div id="btnPotion" class="tbtn"><i class="ic ic-potion sm"></i></div>
+    </div>
   </div>
 </div>
 
@@ -99,18 +181,27 @@
   <h1>DER SMARAGDSPLITTER</h1>
   <p class="small">Ein Dieb hat den Splitter aus dem Schrein geraubt und sich in die Ruine der Ahnen verkrochen.
      Hol ihn zurück — mit Schwert, Bogen und Bomben.</p>
-  <button id="startBtn" class="btn">ABENTEUER STARTEN</button>
-  <div class="keys">
-    <i>W A S D</i><span>Bewegen</span>
-    <i>Maus</i><span>Kamera (Klick = Maus fangen)</span>
-    <i>Leertaste / Linksklick</i><span>Schwert</span>
-    <i>Shift</i><span>Rolle (kurz unverwundbar)</span>
-    <i>E</i><span>Reden / Öffnen / Betreten</span>
-    <i>K</i><span>Schild halten (blockt vorne)</span>
-    <i>Q</i><span>Bombe werfen</span>
-    <i>F</i><span>Pfeil schießen</span>
-    <i>M</i><span>Musik an/aus &nbsp;·&nbsp; <i>Esc</i> Pause</span>
+  <div class="btnrow">
+    <button id="startBtn" class="btn">NEUES SPIEL</button>
+    <button id="continueBtn" class="btn sec" style="display:none">WEITERSPIELEN</button>
   </div>
+  <div class="keys desktoponly">
+    <i>W A S D</i><span>Bewegen</span>
+    <i>Maus</i><span>Kamera (Klick fängt den Zeiger)</span>
+    <i>Leertaste / Linksklick</i><span>Schwert</span>
+    <i>Shift</i><span>Ausweichrolle</span>
+    <i>E</i><span>Reden · Öffnen · Betreten</span>
+    <i>K / Rechtsklick</i><span>Schild halten</span>
+    <i>Q · F · 1</i><span>Bombe · Pfeil · Trank</span>
+    <i>M · Esc</i><span>Musik · Pause</span>
+  </div>
+  <div class="keys touchonly">
+    <i>Links wischen</i><span>Bewegen (Stick)</span>
+    <i>Rechts wischen</i><span>Kamera drehen</span>
+    <i>Buttons</i><span>Schwert · Rolle · Aktion</span>
+    <i>Kleine Buttons</i><span>Schild · Bombe · Pfeil · Trank</span>
+  </div>
+  <p class="small">Der Spielstand wird automatisch im Browser gespeichert.</p>
 </div>
 
 <div id="pause" class="overlay"><h1>PAUSE</h1><p class="small">Klicke ins Bild, um weiterzuspielen.</p></div>
@@ -118,7 +209,7 @@
 <div id="over" class="overlay">
   <h1>GAME OVER</h1>
   <p class="small">Ardun wartet noch immer auf seinen Helden.</p>
-  <button id="againBtn" class="btn">NOCHMAL VERSUCHEN</button>
+  <button id="againBtn" class="btn">IM DORF ERWACHEN</button>
 </div>
 
 <div id="win" class="overlay">
@@ -126,12 +217,30 @@
   <p class="small">Der Steingolem ist gefallen, der Smaragdsplitter leuchtet wieder in deiner Hand.
      Ardun wird ergrünen — und dein Name wird in den Liedern der Dörfer weiterleben.</p>
   <p class="small">Gesammelte Rubine: <b id="winRupees">0</b></p>
-  <button class="btn" onclick="location.reload()">NEUES SPIEL</button>
+  <button class="btn" onclick="localStorage.removeItem('emerald-shard-save-v1');location.reload()">NEUES SPIEL</button>
 </div>
 
-<script src="js/engine.js"></script>
-<script src="js/world.js"></script>
-<script src="js/entities.js"></script>
-<script src="js/game.js"></script>
+<div id="shop" class="overlay">
+  <div id="shopbox" class="panel">
+    <h2>KRAMLADEN</h2>
+    <div id="shopRupeeLine"><i class="ic ic-rupee sm"></i> Deine Rubine: <b id="shopRupees">0</b></div>
+    <div id="shopList">
+      <div class="shopitem"><i class="ic ic-arrow"></i><span class="nm">10 Pfeile</span><span class="pr">10 Rubine</span>
+        <button class="buy" data-item="arrows" data-price="10">Kaufen</button></div>
+      <div class="shopitem"><i class="ic ic-bomb"></i><span class="nm">5 Bomben</span><span class="pr">15 Rubine</span>
+        <button class="buy" data-item="bombs" data-price="15">Kaufen</button></div>
+      <div class="shopitem"><i class="ic ic-potion"></i><span class="nm">Roter Trank</span><span class="pr">30 Rubine</span>
+        <button class="buy" data-item="potion" data-price="30">Kaufen</button></div>
+      <div class="shopitem"><i class="ic ic-heart"></i><span class="nm">Heilung</span><span class="pr">5 Rubine</span>
+        <button class="buy" data-item="heal" data-price="5">Kaufen</button></div>
+    </div>
+    <div style="margin-top:16px"><button id="shopClose" class="btn">SCHLIESSEN</button></div>
+  </div>
+</div>
+
+<script src="js/engine.js?v=4"></script>
+<script src="js/world.js?v=4"></script>
+<script src="js/entities.js?v=4"></script>
+<script src="js/game.js?v=4"></script>
 </body>
 </html>
