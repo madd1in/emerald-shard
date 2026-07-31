@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Der Smaragdsplitter — 3D Action-Adventure</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { width:100%; height:100%; overflow:hidden; background:#0b0d12;
+    font-family:"Trebuchet MS","Segoe UI",system-ui,sans-serif; color:#f3ecd8; user-select:none; }
+  #c { display:block; position:fixed; inset:0; cursor:crosshair; }
+
+  /* ---------- HUD ---------- */
+  #hud { display:none; position:fixed; inset:0; pointer-events:none; }
+  .panel { background:linear-gradient(180deg,rgba(30,24,16,.82),rgba(18,14,10,.86));
+    border:2px solid #b99a4e; border-radius:10px; box-shadow:0 4px 18px rgba(0,0,0,.5), inset 0 0 0 1px rgba(255,235,180,.15); }
+  #topleft { position:absolute; top:14px; left:14px; padding:10px 14px; }
+  #hearts { font-size:26px; line-height:1; letter-spacing:2px; }
+  .heart.full { color:#e8354a; text-shadow:0 0 8px rgba(232,53,74,.6); }
+  .heart.half { color:#e8354a; opacity:.55; }
+  .heart.empty { color:#5d4a3a; }
+  #items { margin-top:9px; display:flex; gap:14px; font-size:15px; align-items:center; }
+  #items span.k { color:#e9d9a8; }
+  #items b { color:#fff; font-size:17px; }
+  #mapwrap { position:absolute; top:14px; right:14px; padding:8px; }
+  #mini { display:block; width:150px; height:150px; border-radius:6px; background:#0d1a10; }
+  #maplabel { text-align:center; font-size:11px; letter-spacing:2px; color:#c9b071; margin-top:5px; text-transform:uppercase; }
+
+  #prompt { display:none; position:absolute; bottom:120px; left:50%; transform:translateX(-50%);
+    padding:9px 18px; font-size:16px; background:rgba(20,16,10,.85); border:2px solid #b99a4e; border-radius:8px; }
+  #prompt b { display:inline-block; background:#b99a4e; color:#241c10; border-radius:5px; padding:1px 8px; margin-right:4px; }
+
+  #toast { position:absolute; top:26%; left:50%; transform:translateX(-50%); font-size:20px; font-weight:bold;
+    padding:10px 22px; background:rgba(20,16,10,.8); border:2px solid #b99a4e; border-radius:8px;
+    opacity:0; transition:opacity .4s; text-align:center; max-width:70vw; }
+
+  #bossbar { display:none; position:absolute; bottom:34px; left:50%; transform:translateX(-50%); width:min(560px,70vw); padding:8px 12px; }
+  #bossname { font-size:13px; letter-spacing:3px; color:#e6c86a; margin-bottom:5px; text-transform:uppercase; }
+  #bosstrack { height:14px; background:#2a1c18; border-radius:7px; overflow:hidden; border:1px solid #7d5a2c; }
+  #bossfill { height:100%; width:100%; background:linear-gradient(90deg,#e8354a,#ff8a3d); transition:width .18s; }
+
+  #dialog { display:none; position:absolute; bottom:38px; left:50%; transform:translateX(-50%);
+    width:min(760px,86vw); padding:16px 20px 18px; pointer-events:none; }
+  #dlgName { color:#e6c86a; font-size:15px; letter-spacing:2px; margin-bottom:7px; text-transform:uppercase; }
+  #dlgText { font-size:19px; line-height:1.5; }
+  #dlgHint { margin-top:10px; font-size:12px; color:#a89a78; text-align:right; }
+
+  /* ---------- Overlays ---------- */
+  .overlay { position:fixed; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    text-align:center; gap:16px; background:radial-gradient(circle at 50% 40%,rgba(20,30,25,.86),rgba(6,8,10,.96)); z-index:10; }
+  #title h1 { font-size:clamp(34px,6.5vw,68px); letter-spacing:4px; color:#f6e6b4;
+    text-shadow:0 0 24px rgba(216,180,90,.5),0 4px 0 #6b4f22; }
+  #title h2 { font-size:clamp(13px,2vw,18px); letter-spacing:7px; color:#9fd4a0; font-weight:normal; margin-top:-8px; }
+  .btn { pointer-events:auto; cursor:pointer; font:inherit; font-size:19px; padding:12px 34px; color:#241c10;
+    background:linear-gradient(180deg,#e8cf86,#b99a4e); border:2px solid #f0e0b0; border-radius:9px; letter-spacing:2px; }
+  .btn:hover { filter:brightness(1.12); }
+  .keys { display:grid; grid-template-columns:auto auto; gap:6px 18px; font-size:14.5px; color:#ddd2b4;
+    background:rgba(0,0,0,.35); padding:16px 24px; border-radius:10px; border:1px solid rgba(185,154,78,.4); }
+  .keys i { color:#f0d894; font-style:normal; font-weight:bold; }
+  #over h1 { color:#e8354a; font-size:52px; letter-spacing:6px; }
+  #win h1 { color:#8ef0a8; font-size:clamp(30px,5vw,54px); letter-spacing:4px; text-shadow:0 0 30px rgba(120,240,160,.5); }
+  #pause h1 { font-size:36px; letter-spacing:6px; color:#f0d894; }
+  #over, #win, #pause { display:none; }
+  .small { font-size:14px; color:#b6ab90; max-width:520px; line-height:1.6; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="hud">
+  <div id="topleft" class="panel">
+    <div id="hearts"></div>
+    <div id="items">
+      <span><span class="k">◆</span> <b id="rupees">0</b></span>
+      <span><span class="k">⚿</span> <b id="keys">0</b></span>
+      <span><span class="k">✹</span> <b id="bombs">–</b></span>
+      <span><span class="k">➶</span> <b id="arrows">–</b></span>
+    </div>
+  </div>
+  <div id="mapwrap" class="panel">
+    <canvas id="mini" width="150" height="150"></canvas>
+    <div id="maplabel">Karte</div>
+  </div>
+  <div id="prompt"></div>
+  <div id="toast"></div>
+  <div id="bossbar" class="panel">
+    <div id="bossname">Steingolem der Ruine</div>
+    <div id="bosstrack"><div id="bossfill"></div></div>
+  </div>
+  <div id="dialog" class="panel">
+    <div id="dlgName"></div>
+    <div id="dlgText"></div>
+    <div id="dlgHint">[E] / Leertaste — weiter</div>
+  </div>
+</div>
+
+<div id="title" class="overlay">
+  <h2>Die Legende von Ardun</h2>
+  <h1>DER SMARAGDSPLITTER</h1>
+  <p class="small">Ein Dieb hat den Splitter aus dem Schrein geraubt und sich in die Ruine der Ahnen verkrochen.
+     Hol ihn zurück — mit Schwert, Bogen und Bomben.</p>
+  <button id="startBtn" class="btn">ABENTEUER STARTEN</button>
+  <div class="keys">
+    <i>W A S D</i><span>Bewegen</span>
+    <i>Maus</i><span>Kamera (Klick = Maus fangen)</span>
+    <i>Leertaste / Linksklick</i><span>Schwert</span>
+    <i>Shift</i><span>Rolle (kurz unverwundbar)</span>
+    <i>E</i><span>Reden / Öffnen / Betreten</span>
+    <i>K</i><span>Schild halten (blockt vorne)</span>
+    <i>Q</i><span>Bombe werfen</span>
+    <i>F</i><span>Pfeil schießen</span>
+    <i>M</i><span>Musik an/aus &nbsp;·&nbsp; <i>Esc</i> Pause</span>
+  </div>
+</div>
+
+<div id="pause" class="overlay"><h1>PAUSE</h1><p class="small">Klicke ins Bild, um weiterzuspielen.</p></div>
+
+<div id="over" class="overlay">
+  <h1>GAME OVER</h1>
+  <p class="small">Ardun wartet noch immer auf seinen Helden.</p>
+  <button id="againBtn" class="btn">NOCHMAL VERSUCHEN</button>
+</div>
+
+<div id="win" class="overlay">
+  <h1>DER SPLITTER IST ZURÜCK</h1>
+  <p class="small">Der Steingolem ist gefallen, der Smaragdsplitter leuchtet wieder in deiner Hand.
+     Ardun wird ergrünen — und dein Name wird in den Liedern der Dörfer weiterleben.</p>
+  <p class="small">Gesammelte Rubine: <b id="winRupees">0</b></p>
+  <button class="btn" onclick="location.reload()">NEUES SPIEL</button>
+</div>
+
+<script src="js/engine.js"></script>
+<script src="js/world.js"></script>
+<script src="js/entities.js"></script>
+<script src="js/game.js"></script>
+</body>
+</html>
