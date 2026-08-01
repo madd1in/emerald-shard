@@ -43,12 +43,19 @@ const Game = {
       this.camDist = 11.5;
       QUALITY.grass = 0.4; QUALITY.rain = 0.5;
     }
-    buildPrims();
-    World.build();
-    this.buildIcons();
     this.resize();
     window.addEventListener('resize', () => this.resize());
     window.addEventListener('orientationchange', () => setTimeout(() => this.resize(), 250));
+    this.buildIcons();
+    // Welt kurz verzögert bauen, damit die Ladeanzeige noch gezeichnet wird.
+    // Bewusst ohne requestAnimationFrame: das ruht in Hintergrund-Tabs.
+    setTimeout(() => this.initWelt(), 40);
+    requestAnimationFrame(t => this.loop(t));
+  },
+
+  initWelt() {
+    buildPrims();
+    World.build();
     this.bindInput();
     this.bindTouch();
     this.mini = document.getElementById('mini').getContext('2d');
@@ -59,8 +66,12 @@ const Game = {
     try { ac = localStorage.getItem('emerald-autocam'); } catch (e) { }
     this.setAutoCam(ac === null ? true : ac === '1');
     this.reset();
-    if (localStorage.getItem(SAVE_KEY)) document.getElementById('continueBtn').style.display = 'inline-block';
-    requestAnimationFrame(t => this.loop(t));
+    let hatStand = false;
+    try { hatStand = !!localStorage.getItem(SAVE_KEY); } catch (e) { }
+    if (hatStand) document.getElementById('continueBtn').style.display = 'inline-block';
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('title').classList.add('sichtbar');
+    this.bereit = true;
   },
 
   buildIcons() {
@@ -92,7 +103,7 @@ const Game = {
     };
     this.blocks = []; this.switches = []; this.heartPieces = []; this.boomerang = null;
     this.fireflies = []; this.rainT = 0; this.weather = 0; this.weatherTimer = 45;
-    this.cuccoRage = 0;
+    this.cuccoRage = 0; this.sparks = []; this.hitStop = 0;
     this.enemies = []; this.pickups = []; this.projectiles = []; this.particles = [];
     this.shockwaves = []; this.chests = []; this.grass = []; this.pots = [];
     this.npcs = []; this.signs = []; this.cracks = []; this.doors = []; this.lights = [];
@@ -210,7 +221,7 @@ const Game = {
     for (const l of C.lights) this.lights.push({ x: l.x, y: l.y, z: l.z, col: l.col, seed: Math.random() * 6, scene: 'cave' });
   },
 
-  enterCave() {
+  _enterCave() {
     World.enter('cave');
     const s = World.cave.start;
     this.player.x = s.x; this.player.z = s.z; this.player.y = 0; this.player.yaw = Math.PI;
@@ -219,7 +230,7 @@ const Game = {
     this.toast('Kristallhöhle', 3);
     this.save();
   },
-  exitCave() {
+  _exitCave() {
     World.enter('over');
     const d = World.caveDoor;
     this.player.x = d.x; this.player.z = d.z + 4;
@@ -368,6 +379,12 @@ const Game = {
     document.getElementById('shopClose').addEventListener('click', () => this.closeShop());
     const camBtn = document.getElementById('camBtn');
     if (camBtn) camBtn.addEventListener('click', () => this.setAutoCam(!this.autoCam));
+    const pauseBtn = document.getElementById('pauseBtn');
+    if (pauseBtn) pauseBtn.addEventListener('click', () => {
+      if (this.state === 'play') this.pause(); else if (this.state === 'pause') this.resume();
+    });
+    const resumeBtn = document.getElementById('resumeBtn');
+    if (resumeBtn) resumeBtn.addEventListener('click', () => this.resume());
     for (const el of document.querySelectorAll('[data-autocam]')) {
       el.addEventListener('click', () => this.setAutoCam(el.dataset.autocam === 'an'));
     }
@@ -751,7 +768,12 @@ const Game = {
   },
 
   /* ---------------- Szenenwechsel ---------------- */
-  enterDungeon() {
+  enterDungeon() { this.blende(() => this._enterDungeon()); },
+  exitDungeon() { this.blende(() => this._exitDungeon()); },
+  enterCave() { this.blende(() => this._enterCave()); },
+  exitCave() { this.blende(() => this._exitCave()); },
+
+  _enterDungeon() {
     World.enter('dun');
     const s = World.dun.start;
     this.player.x = s.x; this.player.z = s.z; this.player.y = 0; this.player.yaw = Math.PI;
@@ -762,7 +784,7 @@ const Game = {
     this.bloeckeZuruecksetzen();     // Rätsel beim Betreten immer im Ausgangszustand
     this.save();
   },
-  exitDungeon() {
+  _exitDungeon() {
     World.enter('over');
     const d = World.dungeonDoor;
     this.player.x = d.x; this.player.z = d.z + 4;
@@ -789,6 +811,9 @@ const Game = {
     dmg = Math.max(1, Math.round(dmg * D.dmg));
     p.hp -= dmg; p.invuln = D.iframes;
     Snd.hurt(); this.shake = Math.max(this.shake, 0.35);
+    this.hitStop = Math.max(this.hitStop || 0, 0.07);
+    const bl = document.getElementById('trefferblitz');
+    if (bl) { bl.classList.add('an'); setTimeout(() => bl.classList.remove('an'), 90); }
     if (sx !== undefined) {
       const a = Math.atan2(p.x - sx, p.z - sz);
       p.kbx = Math.sin(a) * 9 * D.kb; p.kbz = Math.cos(a) * 9 * D.kb; p.kbT = 0.22;
@@ -830,7 +855,12 @@ const Game = {
     if (e.hurtT > 0.18) return;
     e.hp -= dmg; e.hurtT = 0.32;
     Snd.hit();
-    this.burst(e.x, e.y + (e.boss ? 3 : 0.8), e.z, e.boss ? 14 : 8, [1, 0.85, 0.5], 4);
+    // Trefferwucht: kurzer Zeitstopp, Funken am Einschlagpunkt
+    this.hitStop = Math.max(this.hitStop || 0, e.boss ? 0.09 : 0.055);
+    const th = e.y + (e.boss ? 3 : Math.min(1.3, e.r * 1.4 + 0.4));
+    const ta = Math.atan2(fromX - e.x, fromZ - e.z);
+    this.funke(e.x + Math.sin(ta) * e.r * 0.8, th, e.z + Math.cos(ta) * e.r * 0.8, e.boss ? 2.6 : 1.7);
+    this.burst(e.x, th, e.z, e.boss ? 14 : 8, [1, 0.85, 0.5], 4);
     const a = Math.atan2(e.x - fromX, e.z - fromZ);
     const k = knock === undefined ? 9 : knock;
     e.kbx = Math.sin(a) * k; e.kbz = Math.cos(a) * k;
@@ -905,6 +935,20 @@ const Game = {
   },
   shockwave(x, z, maxR, dmg) {
     this.shockwaves.push({ x, z, y: World.height(x, z), r: 1, maxR, dmg, life: 0.55, scene: World.scene, hit: false });
+  },
+  /* Kurzer Funkenblitz am Einschlagpunkt */
+  funke(x, y, z, groesse) {
+    this.sparks.push({ x, y, z, life: 0.16, max: 0.16, s: groesse || 1.6, scene: World.scene });
+  },
+  /* Weiche Blende zwischen den Schauplätzen */
+  blende(mitte) {
+    const el = document.getElementById('blende');
+    if (!el) { mitte(); return; }
+    el.classList.add('an');
+    setTimeout(() => {
+      mitte();
+      setTimeout(() => el.classList.remove('an'), 60);
+    }, 230);
   },
   burstAt(x, y, z, col) {
     if (this.particles.length > (this.mobile ? 180 : 340)) return;
@@ -1001,11 +1045,27 @@ const Game = {
   renderDialog() {
     const d = this.dialog;
     document.getElementById('dlgName').textContent = d.who;
-    document.getElementById('dlgText').textContent = d.lines[d.i].replace('{name}', 'Held');
+    d.voll = d.lines[d.i].replace('{name}', 'Held');
+    d.zeichen = 0;                        // Text läuft wie auf einer Schreibmaschine ein
+    document.getElementById('dlgText').textContent = '';
     Snd.tone(660, 0.05, 'square', 0.06);
+  },
+  updateDialog(dt) {
+    const d = this.dialog; if (!d || d.zeichen === undefined) return;
+    if (d.zeichen >= d.voll.length) return;
+    d.zeichen = Math.min(d.voll.length, d.zeichen + dt * 46);
+    const n = Math.floor(d.zeichen);
+    document.getElementById('dlgText').textContent = d.voll.slice(0, n);
+    if (n > (d.letzterTon || 0) + 2) { d.letzterTon = n; Snd.tone(520 + (n % 5) * 40, 0.03, 'square', 0.035); }
   },
   advanceDialog() {
     const d = this.dialog; if (!d) return;
+    // Erster Druck vervollständigt den Text, erst der zweite blättert weiter
+    if (d.zeichen !== undefined && d.zeichen < d.voll.length) {
+      d.zeichen = d.voll.length;
+      document.getElementById('dlgText').textContent = d.voll;
+      return;
+    }
     d.i++;
     if (d.i >= d.lines.length) {
       document.getElementById('dialog').style.display = 'none';
@@ -1116,8 +1176,16 @@ const Game = {
     if (this.keys['ArrowUp']) this.camPitch = U.clamp(this.camPitch - dt * 1.2, -0.12, 1.15);
     if (this.keys['ArrowDown']) this.camPitch = U.clamp(this.camPitch + dt * 1.2, -0.12, 1.15);
     if (this.state === 'play') this.updatePlayer(dt);
+    if (this.state === 'dialog') this.updateDialog(dt);
     this.updateWorldObjects(dt);
     this.updateCamera(dt);
+    // Musik im Gespräch und im Laden leiser
+    const leise = (this.state === 'dialog' || this.state === 'shop');
+    const zielLaut = leise ? 0.22 : 0.55;
+    if (BGM.cur && BGM.el[BGM.cur] && !BGM.fades.length) {
+      const el = BGM.el[BGM.cur];
+      el.volume = U.clamp(U.lerp(el.volume, zielLaut, Math.min(1, dt * 3)), 0, 1);
+    }
     if (this.state === 'play' && this.time - (this._musT || 0) > 1.5) { this._musT = this.time; this.updateMusic(false); }
     if (this.state === 'play' && this.time - (this._saveT || 0) > 20) { this._saveT = this.time; this.save(); }
   },
@@ -1336,6 +1404,8 @@ const Game = {
 
     for (const q of this.particles) { q.life -= dt; q.vy -= 15 * dt; q.x += q.vx * dt; q.y += q.vy * dt; q.z += q.vz * dt; }
     this.particles = this.particles.filter(q => q.life > 0);
+    for (const f of this.sparks) f.life -= dt;
+    this.sparks = this.sparks.filter(f => f.life > 0);
 
     /* Bumerang: fliegt hin, kehrt zurück, betäubt und sammelt ein */
     const b = this.boomerang;
@@ -1627,6 +1697,12 @@ const Game = {
       M4.compose(pm, q.x, q.y, q.z, q.life * 6, q.life * 4, 0, q.size, q.size, q.size);
       G.draw(PRIM.box, pm, [q.col[0], q.col[1], q.col[2], a], { noDepthWrite: true, emis: 0.4, noTex: true });
     }
+    for (const f of this.sparks) {
+      if (f.scene !== sc) continue;
+      const t = f.life / f.max;
+      G.sprite(f.x, f.y, f.z, f.s * (1.6 - t * 0.6), f.s * (1.6 - t * 0.6),
+        [1, 0.98, 0.75, t], { spark: true, emis: 1, noDepthWrite: true, roll: f.x + f.z });
+    }
     for (const s of this.shockwaves) if (s.scene === sc) Ents.drawShockwave(s);
 
     if (W.water) G.draw(W.water, I, [1, 1, 1, 0.74], { wave: true, noDepthWrite: true, noCull: true });
@@ -1748,8 +1824,30 @@ const Game = {
     let dt = Math.min(0.05, t - this._last);
     this._last = t;
     this.fps = U.lerp(this.fps, 1 / Math.max(dt, 0.001), 0.05);
-    if (this.state !== 'title') { this.update(dt); this.render(); }
+    if (!this.bereit) { requestAnimationFrame(n => this.loop(n)); return; }
+    // Trefferstopp: kurzes Anhalten der Zeit gibt Schlägen Wucht
+    if (this.hitStop > 0) { this.hitStop -= dt; dt *= 0.12; }
+    if (this.state === 'title') this.titelKulisse(dt);
+    else { this.update(dt); this.render(); }
     requestAnimationFrame(n => this.loop(n));
+  },
+
+  /* Langsam kreisende Kamera über dem Dorf hinter dem Titelmenü */
+  titelKulisse(dt) {
+    this.time += dt;
+    this.updateDayNight(dt * 0.5);
+    const a = this.time * 0.075;
+    const cx = 0, cz = 64, r = 26;
+    this.camPos.x = cx + Math.sin(a) * r;
+    this.camPos.z = cz + Math.cos(a) * r;
+    this.camPos.y = World.height(this.camPos.x, this.camPos.z) + 11;
+    this.camTarget = { x: cx, y: World.height(cx, cz) + 3.5, z: cz };
+    this.player.y = World.height(this.player.x, this.player.z);
+    for (const e of this.enemies) {
+      if (e.dead || e.scene !== 'over' || U.dist(e.x, e.z, cx, cz) > 40) continue;
+      Ents.updateEnemy(e, dt, this);
+    }
+    this.render();
   }
 };
 
