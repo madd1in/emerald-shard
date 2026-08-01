@@ -7,6 +7,13 @@
 const DAY_LEN = 300;          // Sekunden pro voller Tag/Nacht-Zyklus
 const SAVE_KEY = 'emerald-shard-save-v1';
 
+/* Schwierigkeitsgrade — skalieren Schaden, Zähigkeit, Unverwundbarkeit und Fundglück */
+const DIFF = {
+  leicht: { name: 'Leicht', dmg: 0.5, hp: 0.7, iframes: 1.7, drops: 1.7, boss: 10, startHerzen: 8, kb: 0.7 },
+  normal: { name: 'Normal', dmg: 1.0, hp: 1.0, iframes: 1.25, drops: 1.15, boss: 14, startHerzen: 6, kb: 1.0 },
+  schwer: { name: 'Schwer', dmg: 1.4, hp: 1.3, iframes: 0.95, drops: 0.8, boss: 18, startHerzen: 6, kb: 1.2 }
+};
+
 const Game = {
   state: 'title',
   time: 0, shake: 0, dayT: 0.32, nightFactor: 0, sunElev: 1,
@@ -18,6 +25,8 @@ const Game = {
   bossActive: false, bossDead: false, prompt: null, dialog: null, hasShard: false,
   mobile: false, touch: { move: null, look: null, dx: 0, dz: 0 },
   player: null, fps: 60,
+  diffKey: 'leicht',
+  get D() { return DIFF[this.diffKey] || DIFF.leicht; },
 
   /* ---------------- Setup ---------------- */
   init() {
@@ -43,6 +52,9 @@ const Game = {
     this.bindInput();
     this.bindTouch();
     this.mini = document.getElementById('mini').getContext('2d');
+    let gespeicherteStufe = null;
+    try { gespeicherteStufe = localStorage.getItem('emerald-diff'); } catch (e) { }
+    this.setDifficulty(gespeicherteStufe && DIFF[gespeicherteStufe] ? gespeicherteStufe : 'leicht');
     this.reset();
     if (localStorage.getItem(SAVE_KEY)) document.getElementById('continueBtn').style.display = 'inline-block';
     requestAnimationFrame(t => this.loop(t));
@@ -65,9 +77,11 @@ const Game = {
   },
 
   reset(keepSave) {
+    const start = this.D.startHerzen;
     this.player = {
       x: 0, z: 70, y: 0, yaw: Math.PI, speed: 0, walkPhase: 0,
-      hp: 6, maxhp: 6, rupees: 0, keys: 0, bombs: 0, arrows: 0, potions: 0, pieces: 0,
+      hp: start, maxhp: start, rupees: 0, keys: 0, bombs: 0, arrows: 0, potions: 0, pieces: 0,
+      fairies: 0, swordLvl: 1,
       items: { sword: false, shield: false, bow: false, bomb: false, boomerang: false },
       invuln: 0, attackT: 0, attackDur: 0.36, hitList: [], rollT: 0, rollDir: { x: 0, z: 1 },
       dead: false, stepT: 0, blocking: false, kbT: 0, kbx: 0, kbz: 0,
@@ -91,6 +105,7 @@ const Game = {
       const en = Ents.makeEnemy(e.t, e.x, e.z);
       en.scene = 'over'; en.id = 'o' + (id++);
       en.groundY = World.height(e.x, e.z); en.y = en.groundY;
+      this.scaleEnemy(en);
       this.enemies.push(en);
     }
     for (const gr of S.grass) this.grass.push({ x: gr.x, z: gr.z, y: World.height(gr.x, gr.z), seed: Math.random() * 6, scene: 'over' });
@@ -118,7 +133,15 @@ const Game = {
     for (const h of [{ x: 60, z: 6, id: 'hp1' }, { x: -92, z: 40, id: 'hp2' }, { x: 86, z: -30, id: 'hp3' }])
       this.heartPieces.push({ x: h.x, z: h.z, y: World.height(h.x, h.z), id: h.id, scene: 'over' });
 
+    // Reisesteine — sparen den langen Rückweg
+    this.warps = [
+      { x: 13, z: 58, name: 'Dorf Ardun', scene: 'over' },
+      { x: 7.5, z: -64, name: 'Bergpass', scene: 'over' }
+    ];
+    for (const w of this.warps) { w.y = World.height(w.x, w.z); World.over.colliders.push({ x: w.x, z: w.z, r: 1.5 }); }
+
     this.spawnDungeon();
+    this.spawnCave();
     this.updateHUD();
     if (!keepSave) this.objective = 'elder';
   },
@@ -135,6 +158,7 @@ const Game = {
       const en = Ents.makeEnemy(e.t, e.x, e.z);
       en.scene = 'dun'; en.groundY = 0; en.y = 0; en.id = 'd' + (id++);
       if (e.t === 'boss') { en.sleeping = true; this.boss = en; }
+      this.scaleEnemy(en);
       this.enemies.push(en);
     }
     let cid = 100;
@@ -163,6 +187,59 @@ const Game = {
     this.bossDead = false; this.bossActive = false;
   },
 
+  spawnCave() {
+    const C = World.cave;
+    C.colliders.length = C.baseCol;
+    let id = 0;
+    for (const e of C.spawns.enemies) {
+      const en = Ents.makeEnemy(e.t, e.x, e.z);
+      en.scene = 'cave'; en.groundY = 0; en.y = 0; en.id = 'k' + (id++);
+      this.scaleEnemy(en);
+      this.enemies.push(en);
+    }
+    let cid = 200;
+    for (const c of C.spawns.chests)
+      this.chests.push({ x: c.x, z: c.z, y: 0, item: c.item, label: c.label, opened: false, openT: 0, scene: 'cave', hidden: false, id: 'c' + (cid++) });
+    for (const p of C.spawns.pots) this.pots.push({ x: p.x, z: p.z, y: 0, scene: 'cave' });
+    for (const l of C.lights) this.lights.push({ x: l.x, y: l.y, z: l.z, col: l.col, seed: Math.random() * 6, scene: 'cave' });
+  },
+
+  enterCave() {
+    World.enter('cave');
+    const s = World.cave.start;
+    this.player.x = s.x; this.player.z = s.z; this.player.y = 0; this.player.yaw = Math.PI;
+    this.camYaw = Math.PI;
+    Snd.door(); this.updateMusic(true);
+    this.toast('Kristallhöhle', 3);
+    this.save();
+  },
+  exitCave() {
+    World.enter('over');
+    const d = World.caveDoor;
+    this.player.x = d.x; this.player.z = d.z + 4;
+    this.player.y = World.height(this.player.x, this.player.z);
+    this.player.yaw = 0; this.camYaw = 0;
+    Snd.door(); this.updateMusic(true);
+    this.save();
+  },
+
+  /* Gegnerwerte an den Schwierigkeitsgrad anpassen */
+  scaleEnemy(e) {
+    const D = this.D;
+    if (e.peaceful) return;
+    if (e.boss) { e.maxhp = D.boss; e.hp = D.boss; }
+    else { e.maxhp = Math.max(1, Math.round(e.maxhp * D.hp)); e.hp = e.maxhp; }
+  },
+  setDifficulty(key) {
+    if (!DIFF[key]) return;
+    this.diffKey = key;
+    for (const el of document.querySelectorAll('[data-diff]'))
+      el.classList.toggle('aktiv', el.dataset.diff === key);
+    const lbl = document.getElementById('diffLabel');
+    if (lbl) lbl.textContent = this.D.name;
+    try { localStorage.setItem('emerald-diff', key); } catch (e) { }
+  },
+
   /* ---------------- Speichern / Laden ---------------- */
   save() {
     if (this.state === 'title') return;
@@ -171,7 +248,8 @@ const Game = {
       localStorage.setItem(SAVE_KEY, JSON.stringify({
         v: 1, x: p.x, z: p.z, scene: World.scene, yaw: p.yaw,
         hp: p.hp, maxhp: p.maxhp, rupees: p.rupees, keys: p.keys,
-        bombs: p.bombs, arrows: p.arrows, potions: p.potions, pieces: p.pieces, items: p.items,
+        bombs: p.bombs, arrows: p.arrows, potions: p.potions, pieces: p.pieces,
+        fairies: p.fairies, swordLvl: p.swordLvl, diff: this.diffKey, items: p.items,
         dayT: this.dayT, bossDead: this.bossDead, hasShard: this.hasShard,
         objective: this.objective, talkedElder: this.talkedElder,
         chests: this.chests.filter(c => c.opened).map(c => c.id),
@@ -186,11 +264,13 @@ const Game = {
   load() {
     let s; try { s = JSON.parse(localStorage.getItem(SAVE_KEY)); } catch (e) { return false; }
     if (!s || s.v !== 1) return false;
+    if (s.diff && DIFF[s.diff]) this.setDifficulty(s.diff);
     this.reset(true);
     const p = this.player;
     Object.assign(p, {
       x: s.x, z: s.z, yaw: s.yaw, hp: s.hp, maxhp: s.maxhp, rupees: s.rupees,
-      keys: s.keys, bombs: s.bombs, arrows: s.arrows, potions: s.potions || 0, pieces: s.pieces || 0
+      keys: s.keys, bombs: s.bombs, arrows: s.arrows, potions: s.potions || 0, pieces: s.pieces || 0,
+      fairies: s.fairies || 0, swordLvl: s.swordLvl || 1
     });
     for (const h of this.heartPieces) if ((s.hearts || []).indexOf(h.id) >= 0) h.taken = true;
     if (s.puzzle) { this.puzzleSolved = true; this.puzzleGate.disabled = true; for (const sw of this.switches) sw.pressed = true; }
@@ -270,6 +350,18 @@ const Game = {
     document.getElementById('musicBtn').addEventListener('click', () => this.toggleMusic());
     document.getElementById('fsBtn').addEventListener('click', () => this.toggleFullscreen());
     document.getElementById('shopClose').addEventListener('click', () => this.closeShop());
+    for (const el of document.querySelectorAll('[data-diff]')) {
+      el.addEventListener('click', () => {
+        const neu = el.dataset.diff;
+        this.setDifficulty(neu);
+        // Läuft schon ein Spiel? Gegnerwerte sofort nachziehen.
+        if (this.state !== 'title') {
+          for (const e of this.enemies) if (!e.dead) this.scaleEnemy(e);
+          this.toast('Schwierigkeit: ' + this.D.name, 2.5);
+          this.save();
+        }
+      });
+    }
     document.querySelectorAll('#shopList .buy').forEach(b => {
       b.addEventListener('click', () => this.buy(b.dataset.item));
     });
@@ -386,9 +478,16 @@ const Game = {
   respawn() {
     const p = this.player;
     document.getElementById('over').style.display = 'none';
-    p.dead = false; p.hp = p.maxhp; p.invuln = 1.5;
-    World.enter('over');
-    p.x = 0; p.z = 70; p.y = World.height(p.x, p.z);
+    p.dead = false; p.hp = p.maxhp; p.invuln = 2.2;
+    // In der Ruine gestorben? Dann dort wieder anfangen, nicht im Dorf
+    if (this.diedIn === 'dun') {
+      World.enter('dun');
+      const s = World.dun.start;
+      p.x = s.x; p.z = s.z; p.y = 0; p.yaw = Math.PI; this.camYaw = Math.PI;
+    } else {
+      World.enter('over');
+      p.x = 0; p.z = 70; p.y = World.height(p.x, p.z);
+    }
     this.bossActive = false;
     if (this.boss && !this.boss.dead) { this.boss.sleeping = true; this.boss.hp = this.boss.maxhp; this.boss.state = 'idle'; }
     if (this.gateCol) this.gateCol.disabled = true;
@@ -500,10 +599,20 @@ const Game = {
           : ['Die Ruine liegt im Norden, hinter dem Pass. Sei wachsam!'];
         this.openDialog(n.name, lines);
       }
-    } else if (t.kind === 'sign') this.openDialog('Schild', [t.obj.text]);
+    } else if (t.kind === 'warp') {
+      const ziel = this.warps.find(w => w !== t.obj) || t.obj;
+      p.x = ziel.x; p.z = ziel.z + 2.8; p.y = World.height(p.x, p.z);
+      this.camPos.x = p.x; this.camPos.z = p.z + 9;
+      Snd.chest(); this.burst(p.x, p.y + 1, p.z, 30, [0.5, 1, 0.9], 5);
+      this.toast('Gereist nach: ' + ziel.name, 2.5);
+      this.save();
+    }
+    else if (t.kind === 'sign') this.openDialog('Schild', [t.obj.text]);
     else if (t.kind === 'chest') this.openChest(t.obj);
     else if (t.kind === 'dungeon') this.enterDungeon();
     else if (t.kind === 'exit') this.exitDungeon();
+    else if (t.kind === 'cave') this.enterCave();
+    else if (t.kind === 'exitcave') this.exitCave();
     else if (t.kind === 'door') {
       if (p.keys > 0) {
         p.keys--; t.obj.locked = false; t.obj.col.disabled = true; t.obj.gone = true;
@@ -522,6 +631,7 @@ const Game = {
       case 'bomb': p.items.bomb = true; p.bombs += 10; this.toast(this.mobile ? 'Bomben (10)!' : 'Bomben (10)! [Q] zum Werfen', 4.5); break;
       case 'bow': p.items.bow = true; p.arrows += 20; this.toast(this.mobile ? 'Bogen & 20 Pfeile!' : 'Bogen & 20 Pfeile! [F] zum Schießen', 4.5); break;
       case 'rupee20': p.rupees += 20; this.toast('20 Rubine!'); break;
+      case 'rupee50': p.rupees += 50; this.toast('50 Rubine!'); break;
       case 'potion': p.potions++; this.toast(this.mobile ? 'Roter Trank!' : 'Roter Trank! [1] zum Trinken', 4); break;
       case 'key': p.keys++; this.toast('Kleiner Schlüssel!'); this.objective = 'door'; break;
       case 'boomerang': p.items.boomerang = true; this.toast(this.mobile ? 'Bumerang! Betäubt Gegner.' : 'Bumerang! [C] wirft ihn — betäubt Gegner.', 5); break;
@@ -568,15 +678,19 @@ const Game = {
   },
   buy(item) {
     const p = this.player;
-    const price = { arrows: 10, bombs: 15, potion: 30, heal: 5 }[item];
+    const price = { arrows: 10, bombs: 15, potion: 30, heal: 5, fairy: 45, sword: 120 }[item];
     if (p.rupees < price) { Snd.deny(); return; }
     if (item === 'heal' && p.hp >= p.maxhp) { Snd.deny(); this.toast('Du bist bei voller Kraft'); return; }
     if (item === 'arrows' && !p.items.bow) { Snd.deny(); this.toast('Du hast noch keinen Bogen'); return; }
+    if (item === 'sword' && p.swordLvl >= 2) { Snd.deny(); this.toast('Deine Klinge ist bereits geschärft'); return; }
+    if (item === 'sword' && !p.items.sword) { Snd.deny(); this.toast('Du hast noch kein Schwert'); return; }
     p.rupees -= price;
     if (item === 'arrows') { p.arrows += 10; this.toast('10 Pfeile gekauft'); }
     if (item === 'bombs') { p.items.bomb = true; p.bombs += 5; this.toast('5 Bomben gekauft'); }
     if (item === 'potion') { p.potions++; this.toast('Trank gekauft'); }
     if (item === 'heal') { p.hp = p.maxhp; this.toast('Vollständig geheilt'); }
+    if (item === 'fairy') { p.fairies++; this.toast('Fee im Glas — sie rettet dich einmal vor dem Ende.', 4); }
+    if (item === 'sword') { p.swordLvl = 2; this.toast('Klinge geschärft — doppelter Schaden!', 4); }
     Snd.buy(); this.updateHUD(); this.updateShop(); this.save();
   },
 
@@ -614,15 +728,29 @@ const Game = {
         return;
       }
     }
-    p.hp -= dmg; p.invuln = 1.1;
+    const D = this.D;
+    dmg = Math.max(1, Math.round(dmg * D.dmg));
+    p.hp -= dmg; p.invuln = D.iframes;
     Snd.hurt(); this.shake = Math.max(this.shake, 0.35);
     if (sx !== undefined) {
       const a = Math.atan2(p.x - sx, p.z - sz);
-      p.kbx = Math.sin(a) * 9; p.kbz = Math.cos(a) * 9; p.kbT = 0.22;
+      p.kbx = Math.sin(a) * 9 * D.kb; p.kbz = Math.cos(a) * 9 * D.kb; p.kbT = 0.22;
     }
     this.updateHUD();
-    if (p.hp <= 0) { p.hp = 0; p.dead = true; this.die(); }
+    if (p.hp <= 0) {
+      // Fee im Glas rettet einmal vor dem Bildschirmtod
+      if (p.fairies > 0) {
+        p.fairies--; p.hp = Math.max(6, Math.floor(p.maxhp / 2)); p.invuln = 2.4;
+        Snd.heart(); Snd.fanfare();
+        this.burst(p.x, p.y + 1.2, p.z, 40, [0.6, 1, 0.9], 5);
+        this.toast('Die Fee im Glas erweckt dich wieder!', 4);
+        this.updateHUD(); this.save();
+        return;
+      }
+      p.hp = 0; p.dead = true; this.die();
+    }
   },
+  schwertSchaden() { return this.player.swordLvl >= 2 ? 2 : 1; },
 
   hitEnemy(e, dmg, fromX, fromZ, knock) {
     if (e.dead) return;
@@ -678,11 +806,12 @@ const Game = {
       }
       this.toast('Es teilt sich!', 2);
     }
-    const r = Math.random();
+    const dr = this.D.drops, r = Math.random();
     if (r < 0.30) this.spawnPickup(e.x, e.z, 'rupee');
     else if (r < 0.40) this.spawnPickup(e.x, e.z, 'rupee5');
-    else if (r < 0.58) this.spawnPickup(e.x, e.z, 'heart');
-    else if (r < 0.66 && this.player.items.bow) this.spawnPickup(e.x, e.z, 'arrow');
+    else if (r < 0.30 + 0.28 * dr) this.spawnPickup(e.x, e.z, 'heart');
+    else if (r < 0.36 + 0.28 * dr && this.player.items.bow) this.spawnPickup(e.x, e.z, 'arrow');
+    if (this.player.hp <= 2 && Math.random() < 0.5) this.spawnPickup(e.x + 1, e.z, 'heart');  // Gnade bei wenig Energie
   },
 
   /* Hühner: wer zu oft zuschlägt, bekommt Besuch */
@@ -789,6 +918,7 @@ const Game = {
   die() {
     Snd.tone(300, 0.9, 'sawtooth', 0.25, 80);
     BGM.stop();
+    this.diedIn = World.scene;
     this.state = 'dead';
     document.exitPointerLock();
     document.getElementById('over').style.display = 'flex';
@@ -848,6 +978,9 @@ const Game = {
     document.getElementById('potions').textContent = p.potions;
     const pc = document.getElementById('pieces');
     if (pc) pc.textContent = p.pieces + '/4';
+    const fa = document.getElementById('fairies');
+    if (fa) fa.parentElement.style.display = p.fairies > 0 ? '' : 'none';
+    if (fa) fa.textContent = p.fairies;
     const setOp = (id, on) => { const el = document.getElementById(id); if (el) el.style.opacity = on ? 1 : 0.35; };
     setOp('btnBow', p.items.bow); setOp('btnBomb', p.items.bomb);
     setOp('btnPotion', p.potions > 0); setOp('btnBoom', p.items.boomerang);
@@ -857,6 +990,7 @@ const Game = {
   updateMusic(force) {
     let want;
     if (World.scene === 'dun') want = this.bossActive ? 'boss' : 'dun';
+    else if (World.scene === 'cave') want = 'dun';
     else want = (U.dist(this.player.x, this.player.z, 0, 66) < 34) ? 'village' : 'over';
     if (force || want !== BGM.cur) BGM.play(want);
   },
@@ -957,7 +1091,7 @@ const Game = {
         if (e.dead || e.scene !== World.scene || e.sleeping || p.hitList.indexOf(e) >= 0) continue;
         if (U.dist(p.x, p.z, e.x, e.z) < 3.4 + e.r) {
           p.hitList.push(e);
-          this.hitEnemy(e, 2, p.x, p.z, 13);
+          this.hitEnemy(e, this.schwertSchaden() + 1, p.x, p.z, 13);
         }
       }
       for (const g of this.grass) if (!g.cut && g.scene === World.scene && U.dist(p.x, p.z, g.x, g.z) < 3.2) this.cutGrass(g);
@@ -1001,7 +1135,7 @@ const Game = {
           const d = U.dist(p.x, p.z, e.x, e.z);
           if (d < 2.5 + e.r) {
             const a = Math.atan2(e.x - p.x, e.z - p.z);
-            if (Math.abs(U.angDiff(p.yaw, a)) < 1.35) { p.hitList.push(e); this.hitEnemy(e, 1, p.x, p.z); }
+            if (Math.abs(U.angDiff(p.yaw, a)) < 1.35) { p.hitList.push(e); this.hitEnemy(e, this.schwertSchaden(), p.x, p.z); }
           }
         }
         for (const g of this.grass) {
@@ -1028,8 +1162,14 @@ const Game = {
     if (World.scene === 'over') {
       for (const n of this.npcs) consider('npc', n, n.x, n.z, n.shop ? 'Laden' : 'Reden');
       for (const s of this.signs) consider('sign', s, s.x, s.z, 'Lesen', 2.6);
+      for (const w of this.warps) consider('warp', w, w.x, w.z, 'Reisen', 3.2);
       const dd = World.dungeonDoor;
       consider('dungeon', null, dd.x, dd.z, 'Ruine betreten', 3.4);
+      const cd = World.caveDoor;
+      consider('cave', null, cd.x, cd.z, 'Höhle betreten', 3.4);
+    } else if (World.scene === 'cave') {
+      const ex = World.cave.exit;
+      consider('exitcave', null, ex.x, ex.z, 'Höhle verlassen', 3.2);
     } else {
       const ex = World.dun.exit;
       consider('exit', null, ex.x, ex.z, 'Ruine verlassen', 3.0);
@@ -1315,8 +1455,19 @@ const Game = {
     for (const d of this.doors) if (!d.gone && d.scene === sc) Ents.drawDoor(d);
     if (sc === 'dun' && this.gateCol && !this.gateCol.disabled) Ents.drawDoor({ x: this.gateCol.x, z: this.gateCol.z, y: 0 });
     for (const n of this.npcs) if (n.scene === sc) Ents.drawNPC(n, this.time);
-    for (const e of this.enemies) if (e.scene === sc && !e.dead && !e.sleeping) Ents.drawEnemy(e, this.time);
+    for (const e of this.enemies) {
+      if (e.scene !== sc || e.dead || e.sleeping) continue;
+      Ents.drawEnemy(e, this.time);
+      // Lebensbalken über angeschlagenen Gegnern
+      if (!e.boss && !e.peaceful && e.hp < e.maxhp && U.dist(e.x, e.z, this.player.x, this.player.z) < 26) {
+        const h = e.y + (e.t === 'boss' ? 6 : e.r * 1.6 + 2.1);
+        G.sprite(e.x, h, e.z, 1.5, 0.22, [0.1, 0.05, 0.05, 0.75], { hard: true, noDepthWrite: true, emis: 1, noTex: true });
+        const f = Math.max(0, e.hp / e.maxhp);
+        G.sprite(e.x - (1.44 * (1 - f)) / 2, h, e.z, 1.44 * f, 0.15, [0.95, 0.3, 0.3, 0.95], { hard: true, noDepthWrite: true, emis: 1, noTex: true });
+      }
+    }
     if (this.boss && this.boss.sleeping && sc === 'dun' && !this.boss.dead) Ents.drawEnemy(this.boss, this.time);
+    if (this.warps) for (const w of this.warps) if (w.scene === sc) Ents.drawWarp(w, this.time);
     for (const bl of this.blocks) if (bl.scene === sc) Ents.drawBlock(bl);
     for (const sw of this.switches) if (sw.scene === sc) Ents.drawSwitch(sw, this.time);
     for (const h of this.heartPieces) if (!h.taken && h.scene === sc) Ents.drawHeartPiece(h, this.time);
@@ -1434,16 +1585,17 @@ const Game = {
       for (const c of this.chests) if (c.scene === 'over' && !c.opened && !c.hidden) ctx.fillRect(cx + c.x * sc - 2, cy + c.z * sc - 2, 4, 4);
       this.miniPlayer(ctx, cx + p.x * sc, cy + p.z * sc);
     } else {
-      const cx = S / 2, cy = S / 2, sc = S / 118;
-      ctx.fillStyle = '#3a3a45';
-      for (const c of World.dun.colliders) {
+      const cx = S / 2, cy = S / 2, sc = World.scene === 'cave' ? S / 68 : S / 118;
+      ctx.fillStyle = World.scene === 'cave' ? '#2e3a44' : '#3a3a45';
+      for (const c of World.cur.colliders) {
         if (c.hx === undefined || c.disabled) continue;
         ctx.fillRect(cx + (c.x - c.hx) * sc, cy + (c.z - c.hz) * sc, c.hx * 2 * sc, c.hz * 2 * sc);
       }
+      const sz = World.scene;
       ctx.fillStyle = '#d9534f';
-      for (const e of this.enemies) if (e.scene === 'dun' && !e.dead && !e.sleeping) ctx.fillRect(cx + e.x * sc - 1.5, cy + e.z * sc - 1.5, 3, 3);
+      for (const e of this.enemies) if (e.scene === sz && !e.dead && !e.sleeping) ctx.fillRect(cx + e.x * sc - 1.5, cy + e.z * sc - 1.5, 3, 3);
       ctx.fillStyle = '#f0c419';
-      for (const c of this.chests) if (c.scene === 'dun' && !c.opened && !c.hidden) ctx.fillRect(cx + c.x * sc - 2, cy + c.z * sc - 2, 4, 4);
+      for (const c of this.chests) if (c.scene === sz && !c.opened && !c.hidden) ctx.fillRect(cx + c.x * sc - 2, cy + c.z * sc - 2, 4, 4);
       this.miniPlayer(ctx, cx + p.x * sc, cy + p.z * sc);
     }
   },

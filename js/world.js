@@ -24,7 +24,7 @@ const World = {
 
   /* ---------- Höhenfeld ---------- */
   height(x, z) {
-    if (this.scene === 'dun') return 0;
+    if (this.scene !== 'over') return 0;
     let hills = Math.sin(x * 0.048) * Math.cos(z * 0.042) * 1.35 + Math.sin((x * 0.7 + z * 0.9) * 0.031) * 1.05;
     const dv = Math.hypot(x - 0, z - 62);
     hills *= U.clamp((dv - 13) / 15, 0.12, 1);
@@ -53,7 +53,76 @@ const World = {
     return n > 0.55 ? TILE.grassFlower : TILE.grass;
   },
 
-  build() { this.buildSky(); this.buildOver(); this.buildDungeon(); this.cur = this.over; },
+  build() { this.buildSky(); this.buildOver(); this.buildDungeon(); this.buildCave(); this.cur = this.over; },
+
+  /* ---------- Tropfsteinhöhle im Wald ---------- */
+  buildCave() {
+    const T = 3.4, W = 17, H = 15;
+    const grid = [];
+    for (let r = 0; r < H; r++) { grid.push([]); for (let c = 0; c < W; c++) grid[r].push('#'); }
+    const carve = (r0, c0, r1, c1) => { for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) grid[r][c] = '.'; };
+    carve(10, 6, 13, 10);     // Eingangshalle
+    carve(8, 8, 10, 8);       // Gang
+    carve(2, 2, 8, 14);       // große Halle
+    const t2w = (r, c) => ({ x: (c - W / 2 + 0.5) * T, z: (r - H / 2 + 0.5) * T });
+
+    const md = new MeshData(), glow = new MeshData();
+    const colliders = [], lights = [];
+    const wallH = 6.5;
+    const rng = mulberry32(31337);
+    for (let r = 0; r < H; r++) {
+      for (let c = 0; c < W; c++) {
+        const p = t2w(r, c);
+        if (grid[r][c] === '.') {
+          const v = 0.9 + rng() * 0.2;
+          md.quad([p.x - T / 2, 0, p.z - T / 2], [p.x - T / 2, 0, p.z + T / 2],
+            [p.x + T / 2, 0, p.z + T / 2], [p.x + T / 2, 0, p.z - T / 2], [v, v, v], TILE.gravel);
+          // Stalaktiten von der Decke
+          if (rng() < 0.14) {
+            const sx = p.x + (rng() - 0.5) * 1.6, sz = p.z + (rng() - 0.5) * 1.6;
+            const len = 1.0 + rng() * 0.8;
+            md.cylinder(sx, wallH - len / 2 - 0.2, sz, 0.06, 0.55 + rng() * 0.25, len, 6, [0.82, 0.80, 0.86], TILE.rock);
+          }
+        } else {
+          let adj = false;
+          for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) {
+            const rr = r + dr, cc = c + dc;
+            if (rr >= 0 && rr < H && cc >= 0 && cc < W && grid[rr][cc] === '.') adj = true;
+          }
+          if (!adj) continue;
+          const v = 0.88 + ((r * 5 + c * 11) % 5) * 0.045;
+          md.box(p.x, wallH / 2, p.z, T, wallH, T, [v, v, v], 0, TILE.rock, 1.7);
+          md.box(p.x, wallH + 0.3, p.z, T * 1.05, 0.6, T * 1.05, [0.7, 0.68, 0.74], 0, TILE.gravel, 1.7);
+          colliders.push({ x: p.x, z: p.z, hx: T / 2, hz: T / 2 });
+        }
+      }
+    }
+    // leuchtende Kristalle statt Fackeln
+    for (const [r, c] of [[9, 7], [9, 9], [4, 3], [4, 13], [7, 5], [7, 11], [12, 5], [12, 11]]) {
+      if (grid[r] === undefined || grid[r][c] !== '#') continue;
+      const p = t2w(r, c);
+      glow.sphere(p.x, 2.4, p.z, 0.55, [0.45, 0.9, 1.0], 7, 5, 1.4, TILE.blank);
+      md.cylinder(p.x, 1.2, p.z, 0.45, 0.14, 2.4, 5, [0.5, 0.8, 0.95], TILE.rock);
+      lights.push({ x: p.x, y: 2.4, z: p.z, col: [0.45, 0.85, 1.0] });
+    }
+
+    const spawns = { enemies: [], chests: [], pots: [] };
+    const en = (t, r, c) => { const p = t2w(r, c); spawns.enemies.push({ t, x: p.x, z: p.z }); };
+    en('chuchu', 12, 7); en('chuchu', 12, 9); en('keese', 9, 8);
+    en('chuchu', 5, 4); en('keese', 3, 12); en('octorok', 6, 12);
+    en('cavelord', 4, 8);                       // Mini-Boss
+    { const p = t2w(2, 3); spawns.chests.push({ x: p.x, z: p.z, item: 'rupee50', label: '50 Rubine' }); }
+    { const p = t2w(2, 13); spawns.chests.push({ x: p.x, z: p.z, item: 'heartpiece', label: 'Herzteil' }); }
+    for (const rc of [[11, 6], [11, 10], [5, 13]]) { const p = t2w(rc[0], rc[1]); spawns.pots.push({ x: p.x, z: p.z }); }
+
+    this.cave = {
+      mesh: G.upload(md), glow: G.upload(glow), colliders, spawns, lights, baseCol: colliders.length,
+      exit: t2w(13, 8), start: t2w(12, 8),
+      fog: [0.05, 0.08, 0.12], fogNear: 16, fogFar: 58,
+      amb: [0.36, 0.40, 0.48], lightCol: [0.52, 0.58, 0.66], light: [0.3, 0.9, 0.3],
+      outdoor: false
+    };
+  },
 
   /* ---------- Himmel ---------- */
   buildSky() {
@@ -277,6 +346,21 @@ const World = {
     }
     torch(-4.2, -67); torch(4.2, -67);
 
+    /* ---- Höhleneingang im Wald ---- */
+    {
+      const cx = -70, cz = 10, y = this.height(cx, cz);
+      props.sphere(cx, y + 1.4, cz - 2.2, 5.2, COL.rock, 7, 5, 0.75, TILE.rock);
+      props.box(cx - 2.3, y + 1.7, cz, 1.5, 3.4, 1.5, COL.stone, 0.3, TILE.rock, 1.6);
+      props.box(cx + 2.3, y + 1.7, cz, 1.5, 3.4, 1.5, COL.stone, -0.3, TILE.rock, 1.6);
+      props.box(cx, y + 3.6, cz, 5.6, 0.9, 1.6, COL.stone, 0, TILE.rock, 1.6);
+      props.box(cx, y + 1.5, cz - 0.7, 2.9, 3.0, 0.6, [0.04, 0.05, 0.06], 0, TILE.blank);
+      colliders.push({ x: cx - 3.1, z: cz, hx: 2.0, hz: 1.5 });
+      colliders.push({ x: cx + 3.1, z: cz, hx: 2.0, hz: 1.5 });
+      colliders.push({ x: cx, z: cz - 3.2, r: 3.2 });
+      this.caveDoor = { x: cx, z: cz - 0.2 };
+      spawns.props.push({ t: 'sign', x: cx + 3.4, z: cz + 2.4, text: 'Kristallhöhle — es glitzert da drin. Und knurrt.' });
+    }
+
     /* ---- Feenquelle im Wald ---- */
     {
       const fx = -66, fz = 46, y = this.height(fx, fz);
@@ -483,7 +567,10 @@ const World = {
     };
   },
 
-  enter(scene) { this.scene = scene; this.cur = scene === 'dun' ? this.dun : this.over; },
+  enter(scene) {
+    this.scene = scene;
+    this.cur = scene === 'dun' ? this.dun : scene === 'cave' ? this.cave : this.over;
+  },
 
   /* ---------- Kollision ---------- */
   blockedStatic(x, z, r) {

@@ -181,9 +181,10 @@ function buildAtlasCanvas() {
   // Sand
   fill(TILE.sand, '#d8c98a');
   speck(TILE.sand, 320, ['#cfbe7c', '#e2d69a', '#c4b473'], 3, 11);
-  // Fels
+  // Fels — feinkörnig, sonst entstehen auf großen Wänden Streifen
   fill(TILE.rock, '#767683');
-  speck(TILE.rock, 200, ['#6a6a76', '#83838f', '#5d5d68', '#8e8e9a'], 8, 26);
+  speck(TILE.rock, 620, ['#70707c', '#7d7d89', '#6a6a76', '#83838f'], 5, 14);
+  speck(TILE.rock, 90, ['#8a8a96', '#63636e'], 6, 16);
   // Steinziegel
   fill(TILE.brick, '#8a8a95');
   {
@@ -287,7 +288,7 @@ function buildAtlasCanvas() {
   speck(TILE.blank, 90, ['#f4f4f4', '#fafafa'], 6, 18);
   // Schotter / Bergfels
   fill(TILE.gravel, '#5e5a5e');
-  speck(TILE.gravel, 260, ['#6b6770', '#524e56', '#767280', '#464349'], 5, 18);
+  speck(TILE.gravel, 640, ['#65616a', '#585460', '#6e6a76', '#514d57'], 5, 13);
 
   // Weicher Lichtschein (Alpha-Verlauf) — für Flammen, Funkeln, Sterne
   {
@@ -756,7 +757,7 @@ const G = {
     const o = opt ? Object.assign({}, opt) : {};
     o.noCull = true; o.blend = true;
     const prim = o.hard ? PRIM.quad : (o.spark ? PRIM.sparkQuad : PRIM.glowQuad);
-    if (o.noTex) o.noTex = false;             // Lichtschein braucht seine Alpha-Kachel
+    if (!o.hard) o.noTex = false;             // Lichtschein braucht seine Alpha-Kachel
     this.draw(prim, this._bb, tint, o);
   }
 };

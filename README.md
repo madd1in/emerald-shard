@@ -33,6 +33,21 @@ dreht die Kamera. Buttons unten rechts in zwei Reihen: Schwert, Rolle, Aktion so
 Bombe, Pfeil, Bumerang und Trank. Startet automatisch im Vollbild und versucht, ins Querformat
 zu drehen; die Buttons skalieren mit der Bildschirmgröße.
 
+## Schwierigkeit
+
+Wählbar im Titelbild und jederzeit im Pausenmenü — **Leicht** ist voreingestellt:
+
+| | Startherzen | Schaden an dir | Gegner-Zähigkeit | Unverwundbar nach Treffer |
+|---|---|---|---|---|
+| Leicht | 4 | halb | −30 % | 1,7 s |
+| Normal | 3 | normal | normal | 1,25 s |
+| Schwer | 3 | +40 % | +30 % | 0,95 s |
+
+Auf Leicht überlebt man acht Moblin-Treffer statt drei. Dazu gibt es überall Rettungsanker:
+Herzen fallen häufiger, bei wenig Energie besonders häufig; die **Fee im Glas** (Laden, 45 Rubine)
+weckt dich einmal wieder auf; wer in der Ruine stirbt, beginnt am Ruineneingang statt im Dorf;
+und **Reisesteine** zwischen Dorf und Bergpass sparen den langen Rückweg.
+
 ## Inhalt
 
 - **Offene Overworld** — Dorf Ardun mit NPCs und Dialogen, Wald, See mit Insel zum Durchwaten,
@@ -48,12 +63,16 @@ zu drehen; die Buttons skalieren mit der Bildschirmgröße.
 - **Bossfight** — Ansturm → Bodenschlag mit Schockwelle → Betäubungsfenster; nur dann verwundbar
 - **Dungeon** — Räume mit verschlossener Tür, **Schieberätsel** mit Druckplatten und Gitter,
   Töpfe, Fackeln, Bosstor
+- **Kristallhöhle** — zweiter Schauplatz im Wald: leuchtende Kristalle, Stalaktiten und der
+  **Kristall-König** als Mini-Boss, der beim Tod zerfällt; dahinter warten 50 Rubine und ein Herzteil
+- **Kramladen** — Rubine gegen Pfeile, Bomben, Tränke, Heilung, die **Fee im Glas**
+  und das **Schärfen der Klinge** (doppelter Schwertschaden)
 - **Items** — Schwert, Schild, Bogen, Bomben (sprengen rissiges Gestein frei), **Bumerang**
   (betäubt Gegner und zieht Fundstücke heran), Tränke, Herzcontainer, Rubine
 - **Herzteile** — vier Stück ergeben ein zusätzliches Herz; versteckt in der Welt
 - **Hühner** — friedlich, aber wer zu oft zuschlägt, wird von einem Schwarm heimgesucht
-- **Kramladen** — Rubine gegen Pfeile, Bomben, Tränke und Heilung
 - **Zielkompass** — zeigt Richtung und Entfernung zum nächsten Questziel
+- **Lebensbalken** über angeschlagenen Gegnern, damit man sieht, was noch steht
 - **Automatisches Speichern** — Fortschritt landet im Browser (localStorage), „Weiterspielen“ im Titelmenü
 
 ## Technik

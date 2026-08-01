@@ -157,6 +157,16 @@
   .buy { pointer-events:auto; cursor:pointer; font:inherit; font-size:13px; padding:7px 13px; border-radius:7px;
     border:2px solid #f0e0b0; background:linear-gradient(180deg,#e8cf86,#b99a4e); color:#241c10; letter-spacing:1px; }
   .buy:disabled { opacity:.4; cursor:not-allowed; }
+
+  /* Schwierigkeitswahl */
+  .diffbox { background:rgba(0,0,0,.32); border:1px solid rgba(185,154,78,.45); border-radius:10px;
+    padding:12px 18px; display:flex; flex-direction:column; gap:9px; align-items:center; }
+  .difftitel { font-size:12px; letter-spacing:3px; color:#c9b071; }
+  .diffbtn { pointer-events:auto; cursor:pointer; font:inherit; font-size:15px; letter-spacing:2px;
+    padding:9px 20px; border-radius:8px; border:2px solid rgba(240,224,176,.45);
+    background:rgba(40,32,20,.75); color:#e8dcb8; }
+  .diffbtn.aktiv { background:linear-gradient(180deg,#e8cf86,#b99a4e); color:#241c10; border-color:#f0e0b0; }
+  .diffhinweis { font-size:12px; color:#a89a78; max-width:400px; line-height:1.5; }
 </style>
 </head>
 <body>
@@ -172,6 +182,7 @@
       <span><i class="ic ic-arrow sm"></i><b id="arrows">–</b></span>
       <span><i class="ic ic-potion sm"></i><b id="potions">0</b></span>
       <span title="Herzteile"><i class="ic ic-heart sm"></i><b id="pieces">0/4</b></span>
+      <span title="Feen im Glas" style="display:none">✦<b id="fairies">0</b></span>
     </div>
   </div>
   <div id="vignette"></div>
@@ -227,6 +238,16 @@
   <h1>DER SMARAGDSPLITTER</h1>
   <p class="small">Ein Dieb hat den Splitter aus dem Schrein geraubt und sich in die Ruine der Ahnen verkrochen.
      Hol ihn zurück — mit Schwert, Bogen und Bomben.</p>
+  <div class="diffbox">
+    <div class="difftitel">SCHWIERIGKEIT</div>
+    <div class="btnrow">
+      <button class="diffbtn aktiv" data-diff="leicht">LEICHT</button>
+      <button class="diffbtn" data-diff="normal">NORMAL</button>
+      <button class="diffbtn" data-diff="schwer">SCHWER</button>
+    </div>
+    <div class="diffhinweis">Leicht: 4 Herzen zum Start, halber Schaden, mehr Fundstücke.
+      Jederzeit im Pausenmenü änderbar.</div>
+  </div>
   <div class="btnrow">
     <button id="startBtn" class="btn">NEUES SPIEL</button>
     <button id="continueBtn" class="btn sec" style="display:none">WEITERSPIELEN</button>
@@ -253,7 +274,18 @@
   <p class="small">Der Spielstand wird automatisch im Browser gespeichert.</p>
 </div>
 
-<div id="pause" class="overlay"><h1>PAUSE</h1><p class="small">Klicke ins Bild, um weiterzuspielen.</p></div>
+<div id="pause" class="overlay">
+  <h1>PAUSE</h1>
+  <div class="diffbox">
+    <div class="difftitel">SCHWIERIGKEIT — aktuell: <span id="diffLabel">Leicht</span></div>
+    <div class="btnrow">
+      <button class="diffbtn" data-diff="leicht">LEICHT</button>
+      <button class="diffbtn" data-diff="normal">NORMAL</button>
+      <button class="diffbtn" data-diff="schwer">SCHWER</button>
+    </div>
+  </div>
+  <p class="small">Klicke ins Bild, um weiterzuspielen.</p>
+</div>
 
 <div id="over" class="overlay">
   <h1>GAME OVER</h1>
@@ -282,14 +314,22 @@
         <button class="buy" data-item="potion" data-price="30">Kaufen</button></div>
       <div class="shopitem"><i class="ic ic-heart"></i><span class="nm">Heilung</span><span class="pr">5 Rubine</span>
         <button class="buy" data-item="heal" data-price="5">Kaufen</button></div>
+      <div class="shopitem"><span style="font-size:26px;line-height:1">✦</span>
+        <span class="nm">Fee im Glas<br><small style="opacity:.7">rettet dich einmal vor dem Ende</small></span>
+        <span class="pr">45 Rubine</span>
+        <button class="buy" data-item="fairy" data-price="45">Kaufen</button></div>
+      <div class="shopitem"><i class="ic ic-sword"></i>
+        <span class="nm">Klinge schärfen<br><small style="opacity:.7">doppelter Schwertschaden</small></span>
+        <span class="pr">120 Rubine</span>
+        <button class="buy" data-item="sword" data-price="120">Kaufen</button></div>
     </div>
     <div style="margin-top:16px"><button id="shopClose" class="btn">SCHLIESSEN</button></div>
   </div>
 </div>
 
-<script src="js/engine.js?v=6"></script>
-<script src="js/world.js?v=6"></script>
-<script src="js/entities.js?v=6"></script>
-<script src="js/game.js?v=6"></script>
+<script src="js/engine.js?v=7"></script>
+<script src="js/world.js?v=7"></script>
+<script src="js/entities.js?v=7"></script>
+<script src="js/game.js?v=7"></script>
 </body>
 </html>

@@ -186,13 +186,22 @@ const Ents = (() => {
       D(root, PRIM.sphere, -0.26, 0.92 + hop, 0.38, 0, 0, 0, 0.1, 0.12, 0.08, [0.1, 0.1, 0.12]);
       D(root, PRIM.sphere, 0.26, 0.92 + hop, 0.38, 0, 0, 0, 0.1, 0.12, 0.08, [0.1, 0.1, 0.12]);
       shadow(e.x, e.groundY, e.z, 0.6, 0.3);
-    } else if (e.t === 'bigchuchu') {
-      const sq = 1 + Math.sin(e.anim * 5) * 0.14, S2 = 1.85;
+    } else if (e.t === 'bigchuchu' || e.t === 'cavelord') {
+      const mini = e.t === 'cavelord';
+      const sq = 1 + Math.sin(e.anim * 5) * 0.14, S2 = mini ? 2.7 : 1.85;
+      const farbe = mini ? [0.35, 0.85, 0.95] : [0.72, 0.42, 0.92];
       const root = node(pool[2], null, e.x, e.y, e.z, 0, e.yaw, 0, S2, S2, S2);
-      P(root, PRIM.sphere, 0, 0.5 / sq, 0, 0, 0, 0, 1.05 * sq, 1.0 / sq, 1.05 * sq, T([0.72, 0.42, 0.92]));
+      P(root, PRIM.sphere, 0, 0.5 / sq, 0, 0, 0, 0, 1.05 * sq, 1.0 / sq, 1.05 * sq, T(farbe));
       D(root, PRIM.sphere, -0.22, 0.62, 0.36, 0, 0, 0, 0.18, 0.18, 0.1, [0.05, 0.05, 0.1]);
       D(root, PRIM.sphere, 0.22, 0.62, 0.36, 0, 0, 0, 0.18, 0.18, 0.1, [0.05, 0.05, 0.1]);
-      shadow(e.x, e.groundY, e.z, 0.95, 0.32);
+      if (mini) {   // Kristallkrone
+        for (let i = 0; i < 5; i++) {
+          const a = (i / 5) * Math.PI * 2;
+          D(root, PRIM.cone, Math.cos(a) * 0.5, 0.95, Math.sin(a) * 0.5, 0.3, -a, 0,
+            0.2, 0.5, 0.2, [0.7, 1, 1], { emis: 0.7 });
+        }
+      }
+      shadow(e.x, e.groundY, e.z, mini ? 1.4 : 0.95, 0.32);
     } else if (e.t === 'stalfos') {
       const w = e.anim * 5, sw = e.speed > 0.3 ? Math.sin(w) * 0.5 : 0;
       const root = node(pool[2], null, e.x, e.y, e.z, 0, e.yaw, 0, 1, 1, 1);
@@ -368,6 +377,20 @@ const Ents = (() => {
     P(root, PRIM.box, 0, 0, 0.18, 0, Math.PI / 2, 0, 0.62, 0.14, 0.2, [0.72, 0.5, 0.26]);
     G.sprite(b.x, b.y, b.z, 1.3, 1.3, [1, 0.95, 0.6, 0.3], { emis: 1, noDepthWrite: true, noTex: true });
   }
+  /* Reisestein */
+  function drawWarp(w, time) {
+    const root = node(pool[2], null, w.x, w.y, w.z, 0, 0, 0, 1, 1, 1);
+    P(root, PRIM.cyl, 0, 0.2, 0, 0, 0, 0, 3.2, 0.4, 3.2, [0.85, 0.85, 0.92]);
+    for (let i = 0; i < 5; i++) {
+      const a = (i / 5) * Math.PI * 2 + 0.3;
+      P(root, PRIM.box, Math.cos(a) * 1.25, 1.1, Math.sin(a) * 1.25, 0, -a, 0, 0.42, 1.9, 0.42, [0.78, 0.78, 0.86]);
+    }
+    const pulse = 0.55 + Math.sin(time * 2.2) * 0.25;
+    D(root, PRIM.disc, 0, 0.45, 0, 0, 0, 0, 2.2, 1, 2.2, [0.45, 0.95, 0.85, pulse], { emis: 1, noDepthWrite: true });
+    G.sprite(w.x, w.y + 1.6 + Math.sin(time * 1.6) * 0.2, w.z, 1.6, 1.6, [0.5, 1, 0.9, 0.5], { emis: 1, noDepthWrite: true });
+    shadow(w.x, w.y, w.z, 1.6, 0.24);
+  }
+
   /* Herzteil (Viertel eines Containers) */
   function drawHeartPiece(h, time) {
     const root = node(pool[2], null, h.x, h.y + 0.7 + Math.sin(time * 2) * 0.12, h.z, 0, time * 1.4, 0, 1, 1, 1);
@@ -398,6 +421,7 @@ const Ents = (() => {
     if (t === 'keese') Object.assign(base, { hp: 1, maxhp: 1, r: 0.5, dmg: 1, agro: 16, spd: 5.0, fly: true });
     if (t === 'octorok') Object.assign(base, { hp: 3, maxhp: 3, r: 0.7, dmg: 1, agro: 22, spd: 1.6 });
     if (t === 'bigchuchu') Object.assign(base, { hp: 5, maxhp: 5, r: 1.1, dmg: 2, agro: 17, spd: 3.0, splits: true });
+    if (t === 'cavelord') Object.assign(base, { hp: 9, maxhp: 9, r: 1.6, dmg: 2, agro: 30, spd: 3.6, splits: true, mini: true });
     if (t === 'stalfos') Object.assign(base, { hp: 4, maxhp: 4, r: 0.7, dmg: 2, agro: 19, spd: 3.4, shielded: true, stunT: 0 });
     if (t === 'cucco') Object.assign(base, { hp: 99, maxhp: 99, r: 0.45, dmg: 1, agro: 8, spd: 3.2, peaceful: true, panic: 0, pecks: 0 });
     if (t === 'boss') Object.assign(base, { hp: 14, maxhp: 14, r: 2.3, dmg: 3, agro: 100, spd: 3.2, boss: true, cycle: 0 });
@@ -430,7 +454,7 @@ const Ents = (() => {
       return;
     }
 
-    if (e.t === 'chuchu' || e.t === 'bigchuchu') {
+    if (e.t === 'chuchu' || e.t === 'bigchuchu' || e.t === 'cavelord') {
       if (e.state === 'idle' && e.stateT <= 0) { e.state = 'hop'; e.stateT = 0.55; e.vy = 4.2; }
       if (e.state === 'hop') {
         if (canSee) { vx = dx / d * spd; vz = dz / d * spd; }
@@ -562,7 +586,7 @@ const Ents = (() => {
     }
 
     e.groundY = World.height(e.x, e.z);
-    const hops = (e.t === 'chuchu' || e.t === 'bigchuchu');
+    const hops = (e.t === 'chuchu' || e.t === 'bigchuchu' || e.t === 'cavelord');
     if (!e.fly && !hops && e.t !== 'cucco') e.y = e.groundY;
     if (hops && e.y < e.groundY) e.y = e.groundY;
 
@@ -574,7 +598,7 @@ const Ents = (() => {
   return {
     drawPlayer, drawNPC, drawEnemy, drawGrass, drawPot, drawChest, drawSign,
     drawCrack, drawDoor, drawPickup, drawProjectile, drawShockwave, drawFlame, shadow,
-    drawBlock, drawSwitch, drawBoomerang, drawHeartPiece,
+    drawBlock, drawSwitch, drawBoomerang, drawHeartPiece, drawWarp,
     makeEnemy, updateEnemy, node, P, settings: S
   };
 })();
