@@ -197,6 +197,7 @@
 
   <div id="sysbtns">
     <button id="musicBtn" class="sysbtn" title="Musik an/aus">♪</button>
+    <button id="camBtn" class="sysbtn" title="Auto-Kamera an">⟳</button>
     <button id="fsBtn" class="sysbtn" title="Vollbild">⛶</button>
   </div>
 
@@ -283,6 +284,13 @@
       <button class="diffbtn" data-diff="normal">NORMAL</button>
       <button class="diffbtn" data-diff="schwer">SCHWER</button>
     </div>
+    <div class="difftitel" style="margin-top:6px">AUTO-KAMERA</div>
+    <div class="btnrow">
+      <button class="diffbtn aktiv" data-autocam="an">AN</button>
+      <button class="diffbtn" data-autocam="aus">AUS</button>
+    </div>
+    <div class="diffhinweis">Die Kamera schwenkt von selbst hinter dich, sobald du eine Weile
+      nicht selbst gedreht hast. Bogen und Bumerang zielen automatisch auf den nächsten Gegner.</div>
   </div>
   <p class="small">Klicke ins Bild, um weiterzuspielen.</p>
 </div>
@@ -327,9 +335,9 @@
   </div>
 </div>
 
-<script src="js/engine.js?v=7"></script>
-<script src="js/world.js?v=7"></script>
-<script src="js/entities.js?v=7"></script>
-<script src="js/game.js?v=7"></script>
+<script src="js/engine.js?v=9"></script>
+<script src="js/world.js?v=9"></script>
+<script src="js/entities.js?v=9"></script>
+<script src="js/game.js?v=9"></script>
 </body>
 </html>

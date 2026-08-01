@@ -28,6 +28,15 @@ Ahnen im Norden verkrochen. Ohne den Splitter welkt das Land. Hol ihn zurück.
 
 Schwert **gedrückt halten** lädt den Wirbelangriff auf — losgelassen trifft er rundum.
 
+**Zielhilfen:** Bogen und Bumerang suchen sich automatisch den nächsten Gegner im Blickfeld —
+der Held dreht sich dabei mit. Die **Auto-Kamera** schwenkt von selbst hinter dich, sobald du
+gut eine Sekunde nicht selbst gedreht hast; manuelles Drehen hat immer Vorrang.
+Abschaltbar über den ⟳-Knopf im HUD oder im Pausenmenü.
+
+**Schiebeblöcke** lassen sich auch **ziehen**: Aktionstaste (`E` bzw. AKTION) halten und
+rückwärts gehen. Fährt sich ein Block trotzdem in einer Ecke fest, stellt das Spiel ihn
+automatisch an den Anfang zurück — und beim Betreten der Ruine steht das Rätsel ohnehin neu.
+
 **Touch (Handy/Tablet)** — linke Bildhälfte wischen bewegt (virtueller Stick), rechte Hälfte
 dreht die Kamera. Buttons unten rechts in zwei Reihen: Schwert, Rolle, Aktion sowie Schild,
 Bombe, Pfeil, Bumerang und Trank. Startet automatisch im Vollbild und versucht, ins Querformat

@@ -25,7 +25,7 @@ const Game = {
   bossActive: false, bossDead: false, prompt: null, dialog: null, hasShard: false,
   mobile: false, touch: { move: null, look: null, dx: 0, dz: 0 },
   player: null, fps: 60,
-  diffKey: 'leicht',
+  diffKey: 'leicht', autoCam: true, camManualT: -99,
   get D() { return DIFF[this.diffKey] || DIFF.leicht; },
 
   /* ---------------- Setup ---------------- */
@@ -55,6 +55,9 @@ const Game = {
     let gespeicherteStufe = null;
     try { gespeicherteStufe = localStorage.getItem('emerald-diff'); } catch (e) { }
     this.setDifficulty(gespeicherteStufe && DIFF[gespeicherteStufe] ? gespeicherteStufe : 'leicht');
+    let ac = null;
+    try { ac = localStorage.getItem('emerald-autocam'); } catch (e) { }
+    this.setAutoCam(ac === null ? true : ac === '1');
     this.reset();
     if (localStorage.getItem(SAVE_KEY)) document.getElementById('continueBtn').style.display = 'inline-block';
     requestAnimationFrame(t => this.loop(t));
@@ -177,7 +180,10 @@ const Game = {
     for (const b of D.puzzle.blocks) {
       const col = { x: b.x, z: b.z, hx: 1.05, hz: 1.05 };
       D.colliders.push(col);
-      this.blocks.push({ x: b.x, z: b.z, tx: b.x, tz: b.z, col, scene: 'dun', moving: false });
+      this.blocks.push({
+        x: b.x, z: b.z, tx: b.x, tz: b.z, startX: b.x, startZ: b.z,
+        col, scene: 'dun', moving: false, steckt: 0
+      });
     }
     for (const s of D.puzzle.switches) this.switches.push({ x: s.x, z: s.z, pressed: false, scene: 'dun' });
     this.puzzleGate = { x: D.puzzle.gate.x, z: D.puzzle.gate.z, hx: 1.7, hz: 1.7, disabled: false };
@@ -229,6 +235,15 @@ const Game = {
     if (e.peaceful) return;
     if (e.boss) { e.maxhp = D.boss; e.hp = D.boss; }
     else { e.maxhp = Math.max(1, Math.round(e.maxhp * D.hp)); e.hp = e.maxhp; }
+  },
+  setAutoCam(an) {
+    this.autoCam = !!an;
+    for (const el of document.querySelectorAll('[data-autocam]'))
+      el.classList.toggle('aktiv', (el.dataset.autocam === 'an') === this.autoCam);
+    const b = document.getElementById('camBtn');
+    if (b) { b.textContent = this.autoCam ? '⟳' : '⊙'; b.title = this.autoCam ? 'Auto-Kamera an' : 'Auto-Kamera aus'; }
+    try { localStorage.setItem('emerald-autocam', this.autoCam ? '1' : '0'); } catch (e) { }
+    if (this.state !== 'title') this.toast(this.autoCam ? 'Auto-Kamera an' : 'Auto-Kamera aus', 2);
   },
   setDifficulty(key) {
     if (!DIFF[key]) return;
@@ -340,6 +355,7 @@ const Game = {
     });
     document.addEventListener('mousemove', e => {
       if (this.mouse.locked && this.state === 'play') {
+        if (Math.abs(e.movementX) > 0.5 || Math.abs(e.movementY) > 0.5) this.camManualT = this.time;
         this.camYaw -= e.movementX * 0.0026;
         this.camPitch = U.clamp(this.camPitch + e.movementY * 0.0022, -0.12, 1.15);
       }
@@ -350,6 +366,11 @@ const Game = {
     document.getElementById('musicBtn').addEventListener('click', () => this.toggleMusic());
     document.getElementById('fsBtn').addEventListener('click', () => this.toggleFullscreen());
     document.getElementById('shopClose').addEventListener('click', () => this.closeShop());
+    const camBtn = document.getElementById('camBtn');
+    if (camBtn) camBtn.addEventListener('click', () => this.setAutoCam(!this.autoCam));
+    for (const el of document.querySelectorAll('[data-autocam]')) {
+      el.addEventListener('click', () => this.setAutoCam(el.dataset.autocam === 'an'));
+    }
     for (const el of document.querySelectorAll('[data-diff]')) {
       el.addEventListener('click', () => {
         const neu = el.dataset.diff;
@@ -399,8 +420,10 @@ const Game = {
           const a = Math.atan2(dy, dx);
           T.dx = Math.cos(a) * n; T.dz = Math.sin(a) * n;
         } else if (T.look && t.identifier === T.look.id) {
-          this.camYaw -= (t.clientX - T.look.x) * 0.006;
-          this.camPitch = U.clamp(this.camPitch + (t.clientY - T.look.y) * 0.005, -0.12, 1.15);
+          const dx = t.clientX - T.look.x, dy = t.clientY - T.look.y;
+          if (Math.abs(dx) > 1 || Math.abs(dy) > 1) this.camManualT = this.time;
+          this.camYaw -= dx * 0.006;
+          this.camPitch = U.clamp(this.camPitch + dy * 0.005, -0.12, 1.15);
           T.look.x = t.clientX; T.look.y = t.clientY;
         }
       }
@@ -428,7 +451,9 @@ const Game = {
     };
     bind('btnA', () => { this.attack(); this.touchAttack = true; }, () => { this.touchAttack = false; this.releaseAttack(); });
     bind('btnRoll', () => this.roll());
-    bind('btnE', () => { if (this.state === 'dialog') this.advanceDialog(); else this.interact(); });
+    bind('btnE',
+      () => { this.touchAction = true; if (this.state === 'dialog') this.advanceDialog(); else this.interact(); },
+      () => { this.touchAction = false; });
     bind('btnBomb', () => this.useBomb());
     bind('btnBow', () => this.useBow());
     bind('btnBoom', () => this.useBoomerang());
@@ -523,9 +548,27 @@ const Game = {
     const fx = Math.sin(p.yaw), fz = Math.cos(p.yaw);
     this.boomerang = {
       x: p.x + fx, y: p.y + 1.2, z: p.z + fz, vx: fx * 22, vz: fz * 22,
-      spin: 0, t: 0, back: false, scene: World.scene, hit: []
+      spin: 0, t: 0, back: false, scene: World.scene, hit: [],
+      ziel: this.zielSuchen(18, 1.15)
     };
     Snd.tone(880, 0.18, 'triangle', 0.14, 1500);
+  },
+
+  /* Nächstes Ziel im Blickkegel — für die Zielsuche des Bumerangs */
+  zielSuchen(reichweite, kegel) {
+    const p = this.player;
+    let best = null, bestWert = Infinity;
+    for (const e of this.enemies) {
+      if (e.dead || e.scene !== World.scene || e.sleeping || e.peaceful) continue;
+      const d = U.dist(p.x, p.z, e.x, e.z);
+      if (d > reichweite) continue;
+      const a = Math.atan2(e.x - p.x, e.z - p.z);
+      const ab = Math.abs(U.angDiff(p.yaw, a));
+      if (ab > kegel) continue;
+      const wert = d + ab * 6;                 // nah und mittig bevorzugt
+      if (wert < bestWert) { bestWert = wert; best = e; }
+    }
+    return best;
   },
   roll() {
     const p = this.player;
@@ -553,8 +596,21 @@ const Game = {
     if (!p.items.bow) return;
     if (p.arrows <= 0) { this.toast('Keine Pfeile mehr'); return; }
     p.arrows--;
-    const fx = Math.sin(p.yaw), fz = Math.cos(p.yaw);
-    this.projectiles.push({ kind: 'arrow', scene: World.scene, x: p.x + fx, z: p.z + fz, y: p.y + 1.3, vx: fx * 30, vz: fz * 30, vy: 0.6, life: 1.8, yaw: p.yaw });
+    // Zielsuche: auf den nächsten Gegner im Blickfeld ausrichten
+    const ziel = this.zielSuchen(30, 1.25);
+    let a = p.yaw, vy = 0.6;
+    if (ziel) {
+      a = Math.atan2(ziel.x - p.x, ziel.z - p.z);
+      p.yaw = a;
+      const zh = ziel.y + (ziel.boss ? 3 : 0.9);
+      const d = Math.max(1, U.dist(p.x, p.z, ziel.x, ziel.z));
+      vy = (zh - (p.y + 1.3)) * 30 / d + 0.35 * d / 30;   // Flugbahn grob auf Zielhöhe
+    }
+    const fx = Math.sin(a), fz = Math.cos(a);
+    this.projectiles.push({
+      kind: 'arrow', scene: World.scene, x: p.x + fx, z: p.z + fz, y: p.y + 1.3,
+      vx: fx * 30, vz: fz * 30, vy, life: 1.8, yaw: a, ziel
+    });
     Snd.bow();
     this.updateHUD();
   },
@@ -703,6 +759,7 @@ const Game = {
     Snd.door(); this.updateMusic(true);
     this.toast('Ruine der Ahnen', 3);
     if (this.objective === 'dungeon') this.objective = 'key';
+    this.bloeckeZuruecksetzen();     // Rätsel beim Betreten immer im Ausgangszustand
     this.save();
   },
   exitDungeon() {
@@ -1052,6 +1109,8 @@ const Game = {
     if (World.scene === 'over') this.updateDayNight(dt);
     this.updateWeather(dt);
     if (this.shake > 0) this.shake = Math.max(0, this.shake - dt * 1.6);
+    if (this.keys['ArrowLeft'] || this.keys['ArrowRight'] || this.keys['ArrowUp'] || this.keys['ArrowDown'])
+      this.camManualT = this.time;
     if (this.keys['ArrowLeft']) this.camYaw += dt * 2.2;
     if (this.keys['ArrowRight']) this.camYaw -= dt * 2.2;
     if (this.keys['ArrowUp']) this.camPitch = U.clamp(this.camPitch - dt * 1.2, -0.12, 1.15);
@@ -1210,6 +1269,16 @@ const Game = {
       pr.x += pr.vx * dt; pr.z += pr.vz * dt; pr.y += pr.vy * dt;
       if (pr.kind === 'arrow') {
         pr.vy -= 6 * dt; pr.life -= dt;
+        // sanftes Nachführen auf das erfasste Ziel
+        if (pr.ziel && !pr.ziel.dead && pr.ziel.scene === pr.scene) {
+          const zw = Math.atan2(pr.ziel.x - pr.x, pr.ziel.z - pr.z);
+          const akt = Math.atan2(pr.vx, pr.vz);
+          const neu = U.angLerp(akt, zw, Math.min(1, dt * 6));
+          const sp = Math.hypot(pr.vx, pr.vz);
+          pr.vx = Math.sin(neu) * sp; pr.vz = Math.cos(neu) * sp;
+          const zh = pr.ziel.y + (pr.ziel.boss ? 3 : 0.9);
+          pr.vy = U.lerp(pr.vy, (zh - pr.y) * 3, Math.min(1, dt * 5));
+        }
         pr.yaw = Math.atan2(pr.vx, pr.vz);
         for (const e of this.enemies) {
           if (e.dead || e.scene !== sc || e.sleeping) continue;
@@ -1272,7 +1341,20 @@ const Game = {
     const b = this.boomerang;
     if (b) {
       b.t += dt; b.spin += dt * 22;
-      if (!b.back && (b.t > 0.42 || World.blockedStatic(b.x, b.z, 0.3))) b.back = true;
+      // Zielsuche: sanft auf den anvisierten Gegner einschwenken
+      if (!b.back) {
+        if (b.ziel && (b.ziel.dead || b.ziel.scene !== b.scene)) b.ziel = null;
+        if (!b.ziel) b.ziel = this.zielSuchen(16, 1.0);
+        if (b.ziel) {
+          const zw = Math.atan2(b.ziel.x - b.x, b.ziel.z - b.z);
+          const akt = Math.atan2(b.vx, b.vz);
+          const neu = U.angLerp(akt, zw, Math.min(1, dt * 7));
+          const sp = Math.hypot(b.vx, b.vz);
+          b.vx = Math.sin(neu) * sp; b.vz = Math.cos(neu) * sp;
+          b.y = U.lerp(b.y, b.ziel.y + (b.ziel.boss ? 3 : 0.9), Math.min(1, dt * 4));
+        }
+      }
+      if (!b.back && (b.t > 0.55 || World.blockedStatic(b.x, b.z, 0.3))) b.back = true;
       if (b.back) {
         const a = Math.atan2(p.x - b.x, p.z - b.z);
         const sp = 26;
@@ -1309,20 +1391,19 @@ const Game = {
         continue;
       }
       const d = U.dist(p.x, p.z, bl.x, bl.z);
-      if (d < 2.4 && p.speed > 2) {
+      if (d < 2.6 && p.speed > 2) {
         const dx = bl.x - p.x, dz = bl.z - p.z;
         let ux = 0, uz = 0;
         if (Math.abs(dx) > Math.abs(dz)) ux = Math.sign(dx); else uz = Math.sign(dz);
-        const T = World.dunT;
-        const nx = bl.x + ux * T, nz = bl.z + uz * T;
-        bl.col.disabled = true;
-        const frei = !World.blockedStatic(nx, nz, 1.0);
-        bl.col.disabled = false;
-        if (frei) {
-          bl.tx = nx; bl.tz = nz; bl.moving = true;
-          Snd.noise(0.35, 0.2, 700); Snd.tone(90, 0.3, 'square', 0.12, 60);
-        }
+        // Ziehen: Aktionstaste halten und rückwärts gehen
+        const zieht = (this.keys['KeyE'] || this.touchAction) &&
+          (this.moveInput().x * -ux + this.moveInput().z * -uz) > 0.4;
+        if (zieht) { ux = -ux; uz = -uz; }
+        this.blockSchieben(bl, ux, uz, World.dunT);
       }
+      // Feststeck-Prüfung kostet einige Kollisionsabfragen — zweimal je Sekunde reicht
+      bl.pruefT = (bl.pruefT || 0) - dt;
+      if (bl.pruefT <= 0) { bl.pruefT = 0.5; this.blockFestgefahren(bl); }
     }
 
     /* Herzteile einsammeln */
@@ -1338,6 +1419,52 @@ const Game = {
         this.toast('Die Hühner beruhigen sich.', 2);
       }
     }
+  },
+
+  /* Block ein Feld weit bewegen, wenn dort Platz ist */
+  blockSchieben(bl, ux, uz, T) {
+    if (!ux && !uz) return false;
+    const nx = bl.x + ux * T, nz = bl.z + uz * T;
+    bl.col.disabled = true;
+    const frei = !World.blockedStatic(nx, nz, 1.0);
+    bl.col.disabled = false;
+    if (!frei) return false;
+    bl.tx = nx; bl.tz = nz; bl.moving = true;
+    Snd.noise(0.35, 0.2, 700); Snd.tone(90, 0.3, 'square', 0.12, 60);
+    return true;
+  },
+
+  /* Ein Block ist verloren, wenn es keine Richtung gibt, in die man ihn
+     schieben könnte UND auf deren Gegenseite man selbst stehen kann.
+     Genau das passiert in einer Ecke — dann stellen wir ihn zurück. */
+  blockFestgefahren(bl) {
+    if (bl.moving || this.puzzleSolved) return;
+    const T = World.dunT;
+    bl.col.disabled = true;
+    let moeglich = false;
+    for (const d of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const zielFrei = !World.blockedStatic(bl.x + d[0] * T, bl.z + d[1] * T, 1.0);
+      const standFrei = !World.blockedStatic(bl.x - d[0] * T, bl.z - d[1] * T, 0.5);
+      if (zielFrei && standFrei) { moeglich = true; break; }
+    }
+    bl.col.disabled = false;
+    if (moeglich) { bl.steckt = 0; return; }
+    // Kurz warten, damit ein Block in Bewegung nicht fälschlich zurückgesetzt wird
+    bl.steckt = (bl.steckt || 0) + 1;
+    if (bl.steckt < 30) return;
+    bl.steckt = 0;
+    this.blockZuruecksetzen(bl);
+    this.toast('Der Block war eingeklemmt und steht wieder am Anfang.', 3.5);
+  },
+  blockZuruecksetzen(bl) {
+    this.burst(bl.x, 1.0, bl.z, 22, [0.7, 0.7, 0.8], 5);
+    bl.x = bl.startX; bl.z = bl.startZ; bl.tx = bl.startX; bl.tz = bl.startZ;
+    bl.col.x = bl.x; bl.col.z = bl.z; bl.moving = false;
+    Snd.noise(0.4, 0.25, 500); Snd.tone(140, 0.3, 'square', 0.12, 220);
+    this.checkSwitches();
+  },
+  bloeckeZuruecksetzen() {
+    for (const bl of this.blocks) if (!this.puzzleSolved) this.blockZuruecksetzen(bl);
   },
 
   /* Beide Platten gedrückt -> Gitter öffnet */
@@ -1377,6 +1504,15 @@ const Game = {
 
   updateCamera(dt) {
     const p = this.player;
+    /* Auto-Kamera: schwenkt von selbst hinter den Helden, sobald man
+       eine Weile nicht selbst gedreht hat. Manuelles Drehen hat Vorrang. */
+    if (this.autoCam && this.state === 'play' && !p.dead) {
+      const seitManuell = this.time - this.camManualT;   // camManualT startet bei -99
+      if (seitManuell > 1.1 && p.speed > 1.5 && p.rollT <= 0 && p.spinT <= 0) {
+        const ziel = Math.atan2(-Math.sin(p.yaw), -Math.cos(p.yaw));
+        this.camYaw = U.angLerp(this.camYaw, ziel, Math.min(1, dt * 1.7));
+      }
+    }
     const tx = p.x, ty = p.y + 1.5, tz = p.z;
     const cp = Math.cos(this.camPitch), sp = Math.sin(this.camPitch);
     let ex = tx + Math.sin(this.camYaw) * cp * this.camDist;
