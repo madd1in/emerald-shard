@@ -116,7 +116,8 @@ const TILE = {
   grass: 0, grassFlower: 1, dirt: 2, sand: 3, glow: 4,
   rock: 5, brick: 6, plank: 7, leaf: 8, spark: 9,
   water: 10, dunFloor: 11, dunWall: 12, shingle: 13, blade: 14,
-  plaster: 15, metal: 16, blank: 17, gravel: 18
+  plaster: 15, metal: 16, blank: 17, gravel: 18, smoke: 19,
+  ring: 20, leafBit: 21
 };
 const ATLAS_N = 5, TILE_PX = 128, TILE_PAD = 0.03;
 
@@ -314,6 +315,43 @@ function buildAtlasCanvas() {
     x.moveTo(ox + 8, cyp); x.lineTo(ox + P - 8, cyp);
     x.stroke();
   }
+  // Weiche Rauchwolke (unregelmäßiger als der reine Lichtschein)
+  {
+    const { ox, oy } = cell(TILE.smoke);
+    for (let i = 0; i < 9; i++) {
+      const bx = ox + P / 2 + (rnd() - 0.5) * P * 0.42;
+      const by = oy + P / 2 + (rnd() - 0.5) * P * 0.42;
+      const r = P * (0.16 + rnd() * 0.16);
+      const g = x.createRadialGradient(bx, by, 0, bx, by, r);
+      g.addColorStop(0, 'rgba(255,255,255,0.55)');
+      g.addColorStop(1, 'rgba(255,255,255,0)');
+      x.fillStyle = g; x.beginPath(); x.arc(bx, by, r, 0, 7); x.fill();
+    }
+  }
+  // Ring für Schockwellen und Wasserkringel
+  {
+    const { ox, oy } = cell(TILE.ring);
+    const cxp = ox + P / 2, cyp = oy + P / 2;
+    const g = x.createRadialGradient(cxp, cyp, P * 0.24, cxp, cyp, P * 0.5 - 2);
+    g.addColorStop(0, 'rgba(255,255,255,0)');
+    g.addColorStop(0.55, 'rgba(255,255,255,0.85)');
+    g.addColorStop(0.85, 'rgba(255,255,255,0.35)');
+    g.addColorStop(1, 'rgba(255,255,255,0)');
+    x.fillStyle = g; x.fillRect(ox, oy, P, P);
+  }
+  // Blattschnipsel (für zerschnittenes Gras)
+  {
+    const { ox, oy } = cell(TILE.leafBit);
+    x.save(); x.beginPath(); x.rect(ox, oy, P, P); x.clip();
+    x.fillStyle = '#6fbf4a';
+    x.beginPath();
+    x.ellipse(ox + P / 2, oy + P / 2, P * 0.4, P * 0.22, 0.5, 0, 7);
+    x.fill();
+    x.strokeStyle = '#4d8f33'; x.lineWidth = 4;
+    x.beginPath(); x.moveTo(ox + P * 0.2, oy + P * 0.68); x.lineTo(ox + P * 0.8, oy + P * 0.32); x.stroke();
+    x.restore();
+  }
+
   // Grashalm mit weichen Rändern
   {
     const { ox, oy } = cell(TILE.blade);
@@ -582,8 +620,9 @@ attribute vec3 a_pos; attribute vec3 a_norm; attribute vec3 a_col; attribute vec
 attribute float a_sway;
 uniform mat4 u_proj, u_view, u_model; uniform mat3 u_nmat;
 uniform float u_time, u_wave, u_fogNear, u_fogFar, u_windMul;
+uniform vec3 u_camPos;
 uniform mediump float u_outline;
-varying vec3 v_norm; varying vec3 v_col; varying vec2 v_uv; varying float v_fog;
+varying vec3 v_norm; varying vec3 v_col; varying vec2 v_uv; varying float v_fog; varying vec3 v_toCam;
 void main(){
   vec3 p = a_pos;
   if(u_wave > 0.5){ p.y += sin(p.x*0.32 + u_time*1.7)*0.16 + cos(p.z*0.38 + u_time*1.2)*0.14; }
@@ -598,14 +637,15 @@ void main(){
   vec4 vp = u_view * wp;
   gl_Position = u_proj * vp;
   v_norm = u_nmat * a_norm;
+  v_toCam = u_camPos - wp.xyz;
   v_col = a_col; v_uv = a_uv;
   v_fog = clamp((-vp.z - u_fogNear)/(u_fogFar-u_fogNear), 0.0, 1.0);
 }`;
 const FS = `
 precision mediump float;
-varying vec3 v_norm; varying vec3 v_col; varying vec2 v_uv; varying float v_fog;
-uniform vec3 u_lightDir, u_fogColor, u_lightCol, u_ambCol;
-uniform vec4 u_tint; uniform float u_emis, u_texMix;
+varying vec3 v_norm; varying vec3 v_col; varying vec2 v_uv; varying float v_fog; varying vec3 v_toCam;
+uniform vec3 u_lightDir, u_fogColor, u_lightCol, u_ambCol, u_rimCol;
+uniform vec4 u_tint; uniform float u_emis, u_texMix, u_rim;
 uniform mediump float u_outline;
 uniform sampler2D u_tex;
 void main(){
@@ -620,6 +660,11 @@ void main(){
   float band = d > 0.72 ? 1.0 : (d > 0.34 ? 0.80 : (d > 0.12 ? 0.64 : 0.52));
   float sky = 0.5 + 0.5*n.y;
   vec3 c = base * (band*u_lightCol + u_ambCol + sky*0.06);
+  // Randlicht: Silhouetten heben sich vom Hintergrund ab
+  if(u_rim > 0.0){
+    float f = 1.0 - max(dot(n, normalize(v_toCam)), 0.0);
+    c += u_rimCol * pow(f, 3.0) * u_rim;
+  }
   c = mix(c, base, u_emis);
   c = mix(c, u_fogColor, v_fog * (1.0 - u_emis));   // Leuchtendes ignoriert den Nebel
   float a = u_tint.a * mix(1.0, tex.a, u_texMix);   // Kacheln mit Alpha (Lichtschein, Halme)
@@ -650,7 +695,8 @@ const G = {
     if (!gl.getProgramParameter(p, gl.LINK_STATUS)) { console.error(gl.getProgramInfoLog(p)); return false; }
     gl.useProgram(p); this.prog = p;
     for (const n of ['u_proj', 'u_view', 'u_model', 'u_nmat', 'u_time', 'u_wave', 'u_fogNear', 'u_fogFar',
-      'u_lightDir', 'u_fogColor', 'u_tint', 'u_emis', 'u_outline', 'u_tex', 'u_texMix', 'u_lightCol', 'u_ambCol', 'u_windMul'])
+      'u_lightDir', 'u_fogColor', 'u_tint', 'u_emis', 'u_outline', 'u_tex', 'u_texMix', 'u_lightCol', 'u_ambCol',
+      'u_windMul', 'u_camPos', 'u_rim', 'u_rimCol'])
       this.loc[n] = gl.getUniformLocation(p, n);
     this.loc.a_pos = gl.getAttribLocation(p, 'a_pos');
     this.loc.a_norm = gl.getAttribLocation(p, 'a_norm');
@@ -710,6 +756,8 @@ const G = {
     gl.uniform3fv(this.loc.u_lightDir, lightDir);
     gl.uniform1f(this.loc.u_time, time);
     gl.uniform1f(this.loc.u_windMul, wind === undefined ? 1 : wind);
+    if (this.camPos) gl.uniform3fv(this.loc.u_camPos, this.camPos);
+    gl.uniform3fv(this.loc.u_rimCol, this.rimCol || [0.55, 0.7, 0.95]);
     gl.uniformMatrix4fv(this.loc.u_proj, false, this.proj);
     gl.uniformMatrix4fv(this.loc.u_view, false, this.view);
     this.drawCalls = 0;
@@ -731,6 +779,7 @@ const G = {
     gl.uniform1f(this.loc.u_wave, opt.wave ? 1 : 0);
     gl.uniform1f(this.loc.u_emis, opt.emis || 0);
     gl.uniform1f(this.loc.u_texMix, opt.noTex ? 0 : 1);
+    gl.uniform1f(this.loc.u_rim, opt.rim || 0);
     const blend = (tint.length > 3 && tint[3] < 1) || opt.blend;
     if (blend) { gl.enable(gl.BLEND); if (opt.noDepthWrite) gl.depthMask(false); }
     if (opt.noCull) gl.disable(gl.CULL_FACE);
@@ -779,6 +828,11 @@ function buildPrims() {
   PRIM.quad = flat(TILE.blank);
   PRIM.glowQuad = flat(TILE.glow);
   PRIM.sparkQuad = flat(TILE.spark);
+  PRIM.smokeQuad = flat(TILE.smoke);
+  // liegender Ring (für Wasserkringel und Wellen am Boden)
+  m = new MeshData();
+  m.quad([-0.5, 0, -0.5], [-0.5, 0, 0.5], [0.5, 0, 0.5], [0.5, 0, -0.5], w, TILE.ring);
+  PRIM.ringFlat = G.upload(m);
   m = new MeshData();
   for (let i = 0; i < 4; i++) {
     const a = (i / 4) * Math.PI * 2;

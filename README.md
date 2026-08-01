@@ -80,8 +80,11 @@ und **Reisesteine** zwischen Dorf und Bergpass sparen den langen Rückweg.
   (betäubt Gegner und zieht Fundstücke heran), Tränke, Herzcontainer, Rubine
 - **Herzteile** — vier Stück ergeben ein zusätzliches Herz; versteckt in der Welt
 - **Hühner** — friedlich, aber wer zu oft zuschlägt, wird von einem Schwarm heimgesucht
+- **Schwertstrahl** — bei voller Energie schleudert jeder Hieb einen Strahl nach vorn
 - **Zielkompass** — zeigt Richtung und Entfernung zum nächsten Questziel
 - **Lebensbalken** über angeschlagenen Gegnern, damit man sieht, was noch steht
+- **Lebendiges Dorf** — Bewohner schlendern umher und bleiben nachts bei ihrem Haus,
+  Hühner picken herum, Schmetterlinge tanzen bei Tag über der Wiese
 - **Automatisches Speichern** — Fortschritt landet im Browser (localStorage), „Weiterspielen“ im Titelmenü
 
 ## Technik
@@ -89,7 +92,11 @@ und **Reisesteine** zwischen Dorf und Bergpass sparen den langen Rückweg.
 Kein Three.js, kein npm, kein Build — `index.html` öffnen genügt.
 
 - **Renderer** — eigener WebGL-Renderer mit Cel-Shading (Lichtbänder), Entfernungsnebel,
-  Toon-Konturen über umgestülpte Rückflächen, Billboard-Sprites für Flammen und Effekte
+  Toon-Konturen über umgestülpte Rückflächen, **Randlicht** auf Figuren (nimmt die
+  Himmelsfarbe auf) und Billboard-Sprites für Flammen, Funken, Staub und Wasserkringel
+- **Held** — aus Primitiven zusammengesetzt: Spitzohren, Gesicht mit Brauen, Tunika mit
+  Rockschoß und Gürtelschnalle, Handschuhe, zweigliedrige Zipfelmütze, die beim Laufen
+  nachschwingt; das Schild hängt auf dem Rücken und wandert zum Blocken an den Arm
 - **Texturen** — 5×5-Kachelatlas (640×640), zur Laufzeit per Canvas-2D gezeichnet: Gras,
   Blumenwiese, Erde, Sand, Fels, Ziegel, Planken, Laub, Wasser, Dungeonboden, Schindeln,
   weicher Lichtschein und Grashalme mit Alphakante. Große Flächen werden beim Aufbau in

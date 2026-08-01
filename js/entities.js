@@ -6,7 +6,7 @@
 const Ents = (() => {
   const pool = []; for (let i = 0; i < 12; i++) pool.push(M4.create());
   const scratch = M4.create();
-  const S = { outline: 0.03 };           // 0 = Konturen aus (Performance)
+  const S = { outline: 0.03, rim: 0 };   // outline 0 = Konturen aus (Performance)
 
   function node(out, parent, px, py, pz, rx, ry, rz, sx, sy, sz) {
     M4.compose(scratch, px, py, pz, rx, ry, rz, sx, sy, sz);
@@ -16,6 +16,7 @@ const Ents = (() => {
   /* Körperteil: mit Kontur */
   function P(parent, prim, px, py, pz, rx, ry, rz, sx, sy, sz, col, opt) {
     node(pool[0], parent, px, py, pz, rx, ry, rz, sx, sy, sz);
+    if (S.rim && !(opt && opt.rim)) { opt = opt || {}; opt = Object.assign({}, opt); opt.rim = S.rim; }
     if (S.outline && !(opt && opt.noOutline)) {
       opt = opt || {};
       const o = {}; for (const k in opt) o[k] = opt[k];
@@ -39,63 +40,127 @@ const Ents = (() => {
   }
 
   /* ---------- Held ---------- */
+  const TUNIC = [0.20, 0.58, 0.26], TUNIC_D = [0.15, 0.45, 0.20];
+  const CREAM = [0.94, 0.92, 0.80], GLOVE = [0.90, 0.88, 0.76];
+  const BOOT = [0.40, 0.26, 0.15], BOOT_D = [0.28, 0.18, 0.10];
+
   function drawPlayer(p, time) {
-    const root = node(pool[2], null, p.x, p.y, p.z, 0, p.yaw, 0, 1, 1, 1);
     const flash = p.invuln > 0 && Math.floor(p.invuln * 18) % 2 === 0;
-    const tint = k => flash ? [1, 0.5, 0.5] : k;
+    const tint = k => flash ? [1, 0.55, 0.55] : k;
+    const RIM = { rim: flash ? 0 : 0.5 };
     const w = p.walkPhase;
-    const sw = p.speed > 0.4 ? Math.sin(w) * 0.6 : 0;
-    const bob = p.speed > 0.4 ? Math.abs(Math.sin(w)) * 0.06 : Math.sin(time * 2) * 0.02;
+    const geht = p.speed > 0.4;
+    const sw = geht ? Math.sin(w) * 0.62 : 0;
+    const atem = Math.sin(time * 1.9) * 0.018;
+    const bob = geht ? Math.abs(Math.sin(w)) * 0.07 : atem;
+    const lean = geht ? 0.10 : 0;                       // leichte Vorlage beim Laufen
     const roll = p.rollT > 0 ? (1 - p.rollT / 0.42) * Math.PI * 2 : 0;
-    if (roll) node(root, null, p.x, p.y + 0.5, p.z, roll, p.yaw, 0, 1, 1, 1);
+    const root = roll
+      ? node(pool[2], null, p.x, p.y + 0.55, p.z, roll, p.yaw, 0, 1, 1, 1)
+      : node(pool[2], null, p.x, p.y, p.z, 0, p.yaw, 0, 1, 1, 1);
 
-    P(root, PRIM.box, -0.19, 0.36, 0, sw, 0, 0, 0.26, 0.72, 0.26, tint(BEIGE));
-    P(root, PRIM.box, 0.19, 0.36, 0, -sw, 0, 0, 0.26, 0.72, 0.26, tint(BEIGE));
-    P(root, PRIM.box, -0.19, 0.08, 0.05, 0, 0, 0, 0.3, 0.2, 0.4, tint(BROWN));
-    P(root, PRIM.box, 0.19, 0.08, 0.05, 0, 0, 0, 0.3, 0.2, 0.4, tint(BROWN));
-    P(root, PRIM.box, 0, 1.06 + bob, 0, 0, 0, 0, 0.78, 0.86, 0.56, tint(GREEN));
-    P(root, PRIM.box, 0, 0.72 + bob, 0, 0, 0, 0, 0.82, 0.16, 0.6, tint(BROWN));
-    const hy = 1.75 + bob;
-    P(root, PRIM.box, 0, hy, 0, 0, 0, 0, 0.62, 0.6, 0.6, tint(SKIN));
-    P(root, PRIM.box, 0, hy + 0.12, -0.13, 0, 0, 0, 0.66, 0.42, 0.42, tint(HAIR));
-    P(root, PRIM.box, -0.35, hy + 0.02, 0, 0, 0, 0, 0.12, 0.26, 0.3, tint(SKIN));
-    P(root, PRIM.box, 0.35, hy + 0.02, 0, 0, 0, 0, 0.12, 0.26, 0.3, tint(SKIN));
-    D(root, PRIM.box, -0.13, hy + 0.02, 0.31, 0, 0, 0, 0.1, 0.13, 0.06, [0.1, 0.1, 0.15]);
-    D(root, PRIM.box, 0.13, hy + 0.02, 0.31, 0, 0, 0, 0.1, 0.13, 0.06, [0.1, 0.1, 0.15]);
-    P(root, PRIM.cone, 0, hy + 0.5, -0.02, 0.35, 0, 0, 0.72, 1.15, 0.72, tint(GREEN));
+    /* --- Beine: Oberschenkel, Stiefel --- */
+    for (const s of [-1, 1]) {
+      const sch = s < 0 ? sw : -sw;
+      const bein = node(pool[7], root, s * 0.17, 0.62, 0, sch, 0, 0, 1, 1, 1);
+      P(bein, PRIM.box, 0, -0.2, 0, 0, 0, 0, 0.23, 0.46, 0.23, tint(BEIGE), RIM);
+      P(bein, PRIM.box, 0, -0.5, 0.03, 0, 0, 0, 0.28, 0.24, 0.34, tint(BOOT), RIM);
+      D(bein, PRIM.box, 0, -0.6, 0.05, 0, 0, 0, 0.3, 0.08, 0.38, tint(BOOT_D));
+    }
 
-    let ra = -sw * 0.8, la = sw * 0.8;
+    /* --- Rumpf: Tunika mit Rockschoß und Gürtel --- */
+    const brust = node(pool[8], root, 0, 0.98 + bob, 0, -lean, 0, 0, 1, 1, 1);
+    P(brust, PRIM.cone, 0, -0.12, 0, Math.PI, 0, 0, 0.92, 0.46, 0.78, tint(TUNIC), RIM);
+    P(brust, PRIM.box, 0, 0.26, 0, 0, 0, 0, 0.66, 0.62, 0.46, tint(TUNIC), RIM);
+    D(brust, PRIM.box, 0, 0.02, 0, 0, 0, 0, 0.72, 0.13, 0.52, tint(BROWN));
+    D(brust, PRIM.box, 0, 0.02, 0.27, 0, 0, 0, 0.16, 0.16, 0.06, COL.gold, { emis: 0.15 });
+    D(brust, PRIM.box, 0, 0.54, 0, 0, 0, 0, 0.5, 0.16, 0.44, tint(CREAM));   // Kragen
+    D(brust, PRIM.box, 0, 0.3, -0.24, 0, 0, 0, 0.2, 0.5, 0.06, tint(TUNIC_D)); // Rückennaht
+
+    /* --- Kopf --- */
+    const kopfY = 0.98 + bob;
+    const kopf = node(pool[9], root, 0, kopfY + 0.72, 0, geht ? Math.sin(w * 2) * 0.05 : 0, 0, 0, 1, 1, 1);
+    P(kopf, PRIM.box, 0, 0, 0, 0, 0, 0, 0.56, 0.54, 0.54, tint(SKIN), RIM);
+    P(kopf, PRIM.box, 0, 0.16, -0.06, 0, 0, 0, 0.6, 0.3, 0.56, tint(HAIR), RIM);   // Haarschopf
+    D(kopf, PRIM.box, 0, 0.06, 0.27, 0, 0, 0, 0.58, 0.16, 0.06, tint(HAIR));       // Pony
+    for (const s of [-1, 1]) {
+      D(kopf, PRIM.box, s * 0.3, -0.04, 0.1, 0, 0, s * 0.25, 0.1, 0.34, 0.2, tint(HAIR)); // Seitensträhnen
+      P(kopf, PRIM.cone, s * 0.32, 0.0, -0.04, 0, 0, s * 1.6, 0.13, 0.24, 0.18, tint(SKIN)); // Spitzohren
+      D(kopf, PRIM.box, s * 0.13, 0.0, 0.28, 0, 0, 0, 0.1, 0.13, 0.04, [1, 1, 1]);
+      D(kopf, PRIM.box, s * 0.14, -0.01, 0.3, 0, 0, 0, 0.06, 0.09, 0.03, [0.12, 0.14, 0.22]);
+      D(kopf, PRIM.box, s * 0.13, 0.12, 0.28, 0, 0, s * -0.2, 0.12, 0.04, 0.03, tint(HAIR));  // Brauen
+    }
+    /* Zipfelmütze in zwei Gliedern, der Zipfel schwingt nach */
+    const muetzeA = node(pool[10], kopf, 0, 0.24, -0.02, 0.25, 0, 0, 1, 1, 1);
+    P(muetzeA, PRIM.cone, 0, 0.16, 0, 0, 0, 0, 0.62, 0.5, 0.6, tint(TUNIC), RIM);
+    const schwung = Math.sin(time * 2.4 + w * 0.5) * 0.18 + (geht ? 0.3 : 0.12);
+    const muetzeB = node(pool[11], muetzeA, 0, 0.3, -0.08, 0.5 + schwung, 0, 0, 1, 1, 1);
+    P(muetzeB, PRIM.cone, 0, 0.3, 0, 0, 0, 0, 0.34, 0.72, 0.34, tint(TUNIC_D), RIM);
+
+    /* --- Arme --- */
+    let ra = -sw * 0.75, la = sw * 0.75;
     if (p.attackT > 0) {
       const t = 1 - p.attackT / p.attackDur;
-      ra = U.lerp(-2.3, 0.9, U.smooth(U.clamp(t * 1.4, 0, 1)));
+      ra = U.lerp(-2.35, 0.95, U.smooth(U.clamp(t * 1.4, 0, 1)));
     }
-    const arm = node(pool[3], root, 0.5, 1.32 + bob, 0, 0, 0, 0, 1, 1, 1);
-    P(arm, PRIM.box, 0, -0.28 * Math.cos(ra), 0.28 * Math.sin(ra), ra, 0, 0, 0.22, 0.62, 0.22, tint(SKIN));
-
     const blocking = p.blocking && p.items.shield;
-    P(root, PRIM.box, -0.5, 1.05 + bob - 0.1, Math.sin(la) * 0.2, blocking ? -0.9 : la, 0, 0, 0.22, 0.62, 0.22, tint(SKIN));
+    // rechter Arm (Schwerthand)
+    const armR = node(pool[3], root, 0.4, kopfY + 0.42, 0, ra, 0, -0.12, 1, 1, 1);
+    P(armR, PRIM.box, 0, -0.2, 0, 0, 0, 0, 0.19, 0.4, 0.19, tint(TUNIC), RIM);
+    P(armR, PRIM.box, 0, -0.5, 0, 0, 0, 0, 0.17, 0.28, 0.17, tint(SKIN), RIM);
+    P(armR, PRIM.box, 0, -0.68, 0, 0, 0, 0, 0.2, 0.16, 0.2, tint(GLOVE), RIM);
+    // linker Arm (Schildhand)
+    const armL = node(pool[4], root, -0.4, kopfY + 0.42, 0, blocking ? -1.05 : la, 0, 0.12, 1, 1, 1);
+    P(armL, PRIM.box, 0, -0.2, 0, 0, 0, 0, 0.19, 0.4, 0.19, tint(TUNIC), RIM);
+    P(armL, PRIM.box, 0, -0.5, 0, 0, 0, 0, 0.17, 0.28, 0.17, tint(SKIN), RIM);
+    P(armL, PRIM.box, 0, -0.68, 0, 0, 0, 0, 0.2, 0.16, 0.2, tint(GLOVE), RIM);
+
+    /* --- Schild: am Arm beim Blocken, sonst auf dem Rücken --- */
     if (p.items.shield) {
-      const sx = blocking ? -0.30 : -0.62, sz = blocking ? 0.5 : 0.22, sr = blocking ? 0 : 0.1;
-      P(root, PRIM.box, sx, 1.1 + bob, sz, 0, blocking ? Math.PI / 2 : 0, sr, 0.16, 0.8, 0.62, [0.35, 0.42, 0.72]);
-      D(root, PRIM.box, sx - (blocking ? 0 : 0.08), 1.1 + bob, sz + (blocking ? 0.1 : 0), 0, blocking ? Math.PI / 2 : 0, sr, 0.06, 0.5, 0.36, COL.gold);
+      const k = blocking ? 1 : 0.82;                  // auf dem Rücken etwas kleiner
+      const sch = blocking
+        ? node(pool[5], armL, 0, -0.62, 0.26, 1.35, 0, 0, k, k, k)
+        : node(pool[5], root, 0, kopfY + 0.2, -0.3, 0.16, 0, 0.22, k, k, k);
+      P(sch, PRIM.box, 0, 0, 0, 0, 0, 0, 0.58, 0.72, 0.1, [0.34, 0.42, 0.74], RIM);
+      D(sch, PRIM.cone, 0, 0.31, 0, 0, 0, 0, 0.56, 0.22, 0.12, [0.34, 0.42, 0.74]);
+      D(sch, PRIM.box, 0, 0, 0.07, 0, 0, 0, 0.46, 0.58, 0.03, COL.gold);
+      D(sch, PRIM.cone, 0, 0.02, 0.1, 0, 0, 0, 0.28, 0.32, 0.04, [0.85, 0.25, 0.3], { emis: 0.1 });
     }
+
+    /* --- Schwert in der rechten Hand --- */
     if (p.items.sword) {
-      const hand = node(pool[5], root, 0.52, 1.32 + bob, 0, 0, 0, 0, 1, 1, 1);
-      const g = node(pool[6], hand, 0, -0.55 * Math.cos(ra), 0.55 * Math.sin(ra) - 0.05, ra, 0, 0, 1, 1, 1);
-      P(g, PRIM.box, 0, 0.12, 0, 0, 0, 0, 0.1, 0.28, 0.1, BROWN);
-      P(g, PRIM.box, 0, 0.28, 0, 0, 0, 0, 0.42, 0.08, 0.14, COL.gold);
-      P(g, PRIM.box, 0, 0.95, 0, 0, 0, 0, 0.14, 1.25, 0.05, STEEL);
-      P(g, PRIM.cone, 0, 1.72, 0, 0, 0, 0, 0.14, 0.35, 0.05, STEEL);
+      const gz = node(pool[6], armR, 0, -0.78, 0.02, -0.15, 0, 0, 1, 1, 1);
+      P(gz, PRIM.box, 0, 0.1, 0, 0, 0, 0, 0.09, 0.26, 0.09, [0.35, 0.22, 0.14]);
+      D(gz, PRIM.box, 0, 0.24, 0, 0, 0, 0, 0.12, 0.08, 0.12, COL.gold);
+      P(gz, PRIM.box, 0, 0.34, 0, 0, 0, 0, 0.44, 0.09, 0.15, COL.gold, RIM);
+      D(gz, PRIM.cone, -0.22, 0.36, 0, 0, 0, -1.2, 0.1, 0.16, 0.1, COL.gold);
+      D(gz, PRIM.cone, 0.22, 0.36, 0, 0, 0, 1.2, 0.1, 0.16, 0.1, COL.gold);
+      const klinge = p.swordLvl >= 2 ? [0.92, 0.95, 1.0] : STEEL;
+      P(gz, PRIM.box, 0, 0.98, 0, 0, 0, 0, 0.13, 1.2, 0.045, klinge, { rim: 0.7 });
+      D(gz, PRIM.box, 0, 0.98, 0, 0, 0, 0, 0.05, 1.1, 0.06, [1, 1, 1], { emis: 0.25 });
+      P(gz, PRIM.cone, 0, 1.72, 0, 0, 0, 0, 0.13, 0.34, 0.045, klinge, { rim: 0.7 });
     }
+
+    /* --- Schwertspur --- */
     if (p.attackT > 0 && p.items.sword) {
       const t = 1 - p.attackT / p.attackDur;
       const a = U.lerp(-1.3, 1.5, U.smooth(U.clamp(t * 1.3, 0, 1)));
-      for (let i = 0; i < 4; i++) {
-        const aa = a - i * 0.26, al = (0.34 - i * 0.07) * (1 - t * 0.55);
+      // schmale Klingenbahn statt breiter Leuchtflecken — sonst überstrahlt sie die Figur
+      for (let i = 0; i < 5; i++) {
+        const aa = a - i * 0.2, al = (0.32 - i * 0.06) * (1 - t * 0.5);
         if (al <= 0) continue;
-        D(root, PRIM.box, Math.sin(aa) * 1.35, 1.15 + Math.cos(aa) * 0.15, Math.cos(aa) * 1.35, 0, -aa, 0,
-          1.0, 0.1, 0.22, [1, 1, 0.9, al], { noDepthWrite: true, emis: 0.9, noTex: true });
+        D(root, PRIM.box, Math.sin(aa) * 1.4, 1.16 + Math.cos(aa) * 0.14, Math.cos(aa) * 1.4, 0, -aa, 0,
+          0.95, 0.055, 0.14, [1, 1, 0.92, al], { noDepthWrite: true, emis: 0.95, noTex: true });
       }
+      // ein einzelnes Funkeln an der Klingenspitze
+      G.sprite(p.x + Math.sin(p.yaw + a) * 1.55, p.y + 1.2, p.z + Math.cos(p.yaw + a) * 1.55,
+        0.5, 0.5, [1, 1, 0.8, 0.5 * (1 - t)], { spark: true, emis: 1, noDepthWrite: true, roll: a });
+    }
+    /* Aufgeladen? Dann funkelt die Klinge */
+    if (p.charge >= 1 && p.spinT <= 0) {
+      const a = time * 7;
+      G.sprite(p.x + Math.sin(p.yaw + 0.5) * 0.9, p.y + 1.8 + Math.sin(a) * 0.1, p.z + Math.cos(p.yaw + 0.5) * 0.9,
+        1.1, 1.1, [1, 0.95, 0.5, 0.75], { spark: true, emis: 1, noDepthWrite: true, roll: a });
     }
     shadow(p.x, World.height(p.x, p.z), p.z, 0.5, 0.32);
   }
@@ -103,10 +168,11 @@ const Ents = (() => {
   /* ---------- NPC ---------- */
   function drawNPC(n, time) {
     const root = node(pool[2], null, n.x, n.y, n.z, 0, n.yaw, 0, 1, 1, 1);
-    const bob = Math.sin(time * 1.6 + n.x) * 0.03;
-    const glow = n.fairy ? { emis: 0.55 } : undefined;
-    P(root, PRIM.box, -0.18, 0.35, 0, 0, 0, 0, 0.26, 0.7, 0.26, BROWN, glow);
-    P(root, PRIM.box, 0.18, 0.35, 0, 0, 0, 0, 0.26, 0.7, 0.26, BROWN, glow);
+    const schritt = n.geht ? Math.sin(time * 7 + n.heimX) * 0.5 : 0;
+    const bob = n.geht ? Math.abs(Math.sin(time * 7 + n.heimX)) * 0.05 : Math.sin(time * 1.6 + n.x) * 0.03;
+    const glow = n.fairy ? { emis: 0.55, rim: 0.4 } : { rim: 0.35 };
+    P(root, PRIM.box, -0.18, 0.35, 0, schritt, 0, 0, 0.26, 0.7, 0.26, BROWN, glow);
+    P(root, PRIM.box, 0.18, 0.35, 0, -schritt, 0, 0, 0.26, 0.7, 0.26, BROWN, glow);
     P(root, PRIM.box, 0, 1.05 + bob, 0, 0, 0, 0, 0.8, 0.85, 0.58, n.color, glow);
     P(root, PRIM.box, 0, 1.72 + bob, 0, 0, 0, 0, 0.6, 0.58, 0.58, n.fairy ? n.color : SKIN, glow);
     P(root, PRIM.box, 0, 1.9 + bob, -0.06, 0, 0, 0, 0.66, 0.3, 0.62, [0.85, 0.85, 0.85], glow);
@@ -133,6 +199,7 @@ const Ents = (() => {
   function drawEnemy(e, time) {
     const flash = e.hurtT > 0;
     const T = c => flash ? [1, 0.45, 0.4] : c;
+    S.rim = flash ? 0 : 0.4;                 // Randlicht hebt Gegner vom Hintergrund ab
     if (e.t === 'chuchu') {
       const sq = 1 + Math.sin(e.anim * 6) * 0.16;
       const root = node(pool[2], null, e.x, e.y, e.z, 0, e.yaw, 0, 1, 1, 1);
@@ -266,6 +333,7 @@ const Ents = (() => {
       P(ra2, PRIM.box, 0, -2.35, 0, 0, 0, 0, 1.3, 1.1, 1.3, T([0.30, 0.29, 0.34]));
       shadow(e.x, e.groundY, e.z, 2.1, 0.34);
     }
+    S.rim = 0;                               // Randlicht nur für Figuren
   }
 
   /* ---------- Objekte ---------- */

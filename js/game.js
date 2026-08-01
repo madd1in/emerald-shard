@@ -103,7 +103,7 @@ const Game = {
     };
     this.blocks = []; this.switches = []; this.heartPieces = []; this.boomerang = null;
     this.fireflies = []; this.rainT = 0; this.weather = 0; this.weatherTimer = 45;
-    this.cuccoRage = 0; this.sparks = []; this.hitStop = 0;
+    this.cuccoRage = 0; this.sparks = []; this.hitStop = 0; this.ringe = []; this.beams = [];
     this.enemies = []; this.pickups = []; this.projectiles = []; this.particles = [];
     this.shockwaves = []; this.chests = []; this.grass = []; this.pots = [];
     this.npcs = []; this.signs = []; this.cracks = []; this.doors = []; this.lights = [];
@@ -127,7 +127,9 @@ const Game = {
     for (const c of S.chests) this.chests.push({ x: c.x, z: c.z, y: World.height(c.x, c.z), item: c.item, label: c.label, opened: false, openT: 0, scene: 'over', hidden: false, id: 'c' + (cid++) });
     for (const n of S.npcs) this.npcs.push({
       x: n.x, z: n.z, y: World.height(n.x, n.z), yaw: Math.PI, name: n.name, color: n.color,
-      lines: n.lines, give: n.give, beard: !!n.give, shop: !!n.shop, fairy: !!n.fairy, scene: 'over'
+      lines: n.lines, give: n.give, beard: !!n.give, shop: !!n.shop, fairy: !!n.fairy, scene: 'over',
+      heimX: n.x, heimZ: n.z, ziel: null, warte: Math.random() * 4, gehT: 0,
+      wandert: !n.shop && !n.fairy      // Händler und Quellgeist bleiben an Ort und Stelle
     });
     for (const p of S.props) {
       if (p.t === 'sign') this.signs.push({ x: p.x, z: p.z, y: World.height(p.x, p.z), text: p.text, scene: 'over' });
@@ -546,6 +548,15 @@ const Game = {
     if (p.attackT > 0 || p.rollT > 0 || p.spinT > 0 || p.dead) return;
     p.attackT = p.attackDur; p.hitList = [];
     Snd.swing();
+    // Bei voller Energie schleudert die Klinge einen Strahl
+    if (p.hp >= p.maxhp) {
+      const fx = Math.sin(p.yaw), fz = Math.cos(p.yaw);
+      this.beams.push({
+        x: p.x + fx * 1.9, y: p.y + 1.15, z: p.z + fz * 1.9,
+        vx: fx * 24, vz: fz * 24, yaw: p.yaw, life: 1.1, scene: World.scene, hit: []
+      });
+      Snd.tone(1500, 0.22, 'triangle', 0.12, 500);
+    }
   },
   /* Gedrückthalten lädt den Wirbelangriff auf */
   releaseAttack() {
@@ -957,7 +968,7 @@ const Game = {
       col, scene: World.scene
     });
   },
-  burst(x, y, z, n, col, spread) {
+  burst(x, y, z, n, col, spread, weich) {
     const cap = this.mobile ? 180 : 340;
     for (let i = 0; i < n; i++) {
       if (this.particles.length > cap) break;
@@ -966,7 +977,20 @@ const Game = {
         x, y, z, vx: Math.cos(a) * s, vy: 1 + Math.random() * (spread || 4), vz: Math.sin(a) * s,
         life: 0.4 + Math.random() * 0.5, maxlife: 0.9, size: 0.1 + Math.random() * 0.18,
         col: [col[0] * (0.8 + Math.random() * 0.4), col[1] * (0.8 + Math.random() * 0.4), col[2] * (0.8 + Math.random() * 0.4)],
-        scene: World.scene
+        scene: World.scene, weich: !!weich
+      });
+    }
+  },
+  /* Weiche Staubwolke, z. B. unter den Füßen oder bei Explosionen */
+  staub(x, y, z, n, col, spread) {
+    const cap = this.mobile ? 180 : 340;
+    for (let i = 0; i < n; i++) {
+      if (this.particles.length > cap) break;
+      const a = Math.random() * Math.PI * 2, s = Math.random() * (spread || 1.4);
+      this.particles.push({
+        x, y, z, vx: Math.cos(a) * s, vy: 0.4 + Math.random() * 0.9, vz: Math.sin(a) * s,
+        life: 0.5 + Math.random() * 0.4, maxlife: 0.9, size: 0.12 + Math.random() * 0.1,
+        col, scene: World.scene, weich: true
       });
     }
   },
@@ -1249,8 +1273,14 @@ const Game = {
     p.stepT -= dt;
     if (p.speed > 1 && p.stepT <= 0) {
       p.stepT = inWater ? 0.34 : 0.30;
-      if (inWater) { Snd.splash(); this.burst(p.x, WATER_Y + 0.1, p.z, 4, [0.6, 0.85, 1.0], 2); }
-      else Snd.step();
+      if (inWater) {
+        Snd.splash();
+        this.burst(p.x, WATER_Y + 0.1, p.z, 4, [0.6, 0.85, 1.0], 2);
+        this.ringe.push({ x: p.x, z: p.z, y: WATER_Y + 0.04, r: 0.4, life: 0.9, max: 0.9, scene: World.scene, col: [0.8, 0.95, 1] });
+      } else {
+        Snd.step();
+        this.staub(p.x, p.y + 0.06, p.z, 2, [0.72, 0.66, 0.54], 0.7);   // Staubwölkchen
+      }
     }
 
     if (p.attackT > 0 && p.items.sword) {
@@ -1332,6 +1362,41 @@ const Game = {
     this.enemies = this.enemies.filter(e => !e.dead);
     for (const c of this.chests) if (c.opened && c.openT < 1) c.openT = Math.min(1, c.openT + dt * 2.5);
 
+    /* Dorfbewohner schlendern umher — nachts bleiben sie bei ihrem Haus */
+    if (sc === 'over') {
+      for (const n of this.npcs) {
+        if (!n.wandert || n.scene !== 'over') continue;
+        const spricht = this.dialog && this.dialog.who === n.name;
+        if (spricht) { n.gehT = 0; continue; }
+        const nachts = this.nightFactor > 0.55;
+        n.warte -= dt;
+        if (!n.ziel && n.warte <= 0) {
+          const r = nachts ? 1.5 : 7;
+          const a = Math.random() * Math.PI * 2, d = 2 + Math.random() * r;
+          n.ziel = { x: n.heimX + Math.cos(a) * d, z: n.heimZ + Math.sin(a) * d };
+          n.gehT = 0;
+        }
+        if (n.ziel) {
+          const dx = n.ziel.x - n.x, dz = n.ziel.z - n.z;
+          const d = Math.hypot(dx, dz);
+          n.gehT += dt;
+          if (d < 0.4 || n.gehT > 6) { n.ziel = null; n.warte = 2 + Math.random() * 6; }
+          else {
+            const s = 1.5;
+            const m = World.move(n.x, n.z, dx / d * s * dt, dz / d * s * dt, 0.45);
+            if (Math.hypot(m.x - n.x, m.z - n.z) < s * dt * 0.3) { n.ziel = null; n.warte = 1 + Math.random() * 3; }
+            n.x = m.x; n.z = m.z;
+            n.y = World.height(n.x, n.z);
+            n.yaw = U.angLerp(n.yaw, Math.atan2(dx, dz), Math.min(1, dt * 5));
+            n.geht = true;
+          }
+        } else n.geht = false;
+        // dem Helden zuwenden, wenn er nahe steht
+        if (U.dist(n.x, n.z, p.x, p.z) < 3.5 && !n.ziel)
+          n.yaw = U.angLerp(n.yaw, Math.atan2(p.x - n.x, p.z - n.z), Math.min(1, dt * 4));
+      }
+    }
+
     for (const pr of this.projectiles) {
       if (pr.scene !== sc) continue;
       pr.x += pr.vx * dt; pr.z += pr.vz * dt; pr.y += pr.vy * dt;
@@ -1406,6 +1471,30 @@ const Game = {
     this.particles = this.particles.filter(q => q.life > 0);
     for (const f of this.sparks) f.life -= dt;
     this.sparks = this.sparks.filter(f => f.life > 0);
+    for (const r of this.ringe) { r.life -= dt; r.r += dt * (r.tempo || 3.2); }
+    this.ringe = this.ringe.filter(r => r.life > 0);
+
+    /* Schwertstrahl */
+    for (const b of this.beams) {
+      if (b.scene !== sc) { b.life = 0; continue; }
+      b.life -= dt;
+      b.x += b.vx * dt; b.z += b.vz * dt;
+      b.y = (sc === 'over' ? World.height(b.x, b.z) : 0) + 1.15;
+      for (const e of this.enemies) {
+        if (e.dead || e.scene !== sc || e.sleeping || b.hit.indexOf(e) >= 0) continue;
+        if (U.dist(b.x, b.z, e.x, e.z) < e.r + 0.8) {
+          b.hit.push(e);
+          if (e.peaceful) this.angerCucco(e, b.x, b.z);
+          else this.hitEnemy(e, this.schwertSchaden(), b.x, b.z, 7);
+        }
+      }
+      for (const g of this.grass) if (!g.cut && g.scene === sc && U.dist(b.x, b.z, g.x, g.z) < 1.1) this.cutGrass(g);
+      if (World.blockedStatic(b.x, b.z, 0.3)) {
+        this.burst(b.x, b.y, b.z, 8, [0.8, 1, 0.9], 3);
+        b.life = 0;
+      }
+    }
+    this.beams = this.beams.filter(b => b.life > 0);
 
     /* Bumerang: fliegt hin, kehrt zurück, betäubt und sammelt ein */
     const b = this.boomerang;
@@ -1614,6 +1703,11 @@ const Game = {
     if (this.shake > 0) { sx = (Math.random() - 0.5) * this.shake; sy = (Math.random() - 0.5) * this.shake; }
     const c = this.camPos, t = this.camTarget || { x: 0, y: 0, z: 0 };
     M4.lookAt(G.view, c.x + sx, c.y + sy, c.z, t.x, t.y, t.z, 0, 1, 0);
+    G.camPos = [c.x + sx, c.y + sy, c.z];
+    // Randlicht nimmt die Himmelsfarbe auf: tagsüber bläulich, nachts kühl, im Berg warm
+    G.rimCol = W.outdoor
+      ? [0.5 + this.nightFactor * 0.1, 0.66, 0.95]
+      : [0.55, 0.62, 0.85];
     G.frame(W.fog, W.fogNear, W.fogFar, W.amb, W.lightCol, W.light, this.time);
 
     const I = M4.create();
@@ -1694,8 +1788,13 @@ const Game = {
     for (const q of this.particles) {
       if (q.scene !== sc) continue;
       const a = U.clamp(q.life / q.maxlife, 0, 1);
-      M4.compose(pm, q.x, q.y, q.z, q.life * 6, q.life * 4, 0, q.size, q.size, q.size);
-      G.draw(PRIM.box, pm, [q.col[0], q.col[1], q.col[2], a], { noDepthWrite: true, emis: 0.4, noTex: true });
+      if (q.weich) {          // Staub und Rauch als weiche Wolken
+        const g = q.size * (2.6 + (1 - a) * 3.4);
+        G.sprite(q.x, q.y, q.z, g, g, [q.col[0], q.col[1], q.col[2], a * 0.55], { emis: 0.5, noDepthWrite: true });
+      } else {
+        M4.compose(pm, q.x, q.y, q.z, q.life * 6, q.life * 4, 0, q.size, q.size, q.size);
+        G.draw(PRIM.box, pm, [q.col[0], q.col[1], q.col[2], a], { noDepthWrite: true, emis: 0.4, noTex: true });
+      }
     }
     for (const f of this.sparks) {
       if (f.scene !== sc) continue;
@@ -1704,9 +1803,45 @@ const Game = {
         [1, 0.98, 0.75, t], { spark: true, emis: 1, noDepthWrite: true, roll: f.x + f.z });
     }
     for (const s of this.shockwaves) if (s.scene === sc) Ents.drawShockwave(s);
+    // Wasserkringel liegen flach auf der Oberfläche
+    const rm2 = M4.create();
+    for (const r of this.ringe) {
+      if (r.scene !== sc) continue;
+      const a = U.clamp(r.life / r.max, 0, 1);
+      M4.compose(rm2, r.x, r.y, r.z, 0, 0, 0, r.r * 2, 1, r.r * 2);
+      G.draw(PRIM.ringFlat, rm2, [r.col[0], r.col[1], r.col[2], a * 0.6],
+        { emis: 1, noDepthWrite: true, noCull: true, blend: true });
+    }
+    // Schwertstrahl
+    for (const b of this.beams) {
+      if (b.scene !== sc) continue;
+      const bm = M4.create();
+      M4.compose(bm, b.x, b.y, b.z, 0, b.yaw, 0, 0.22, 0.95, 1.7);
+      G.draw(PRIM.box, bm, [0.8, 1, 0.88, 0.5], { emis: 1, noDepthWrite: true, noTex: true });
+      G.sprite(b.x, b.y, b.z, 1.1, 1.1, [0.7, 1, 0.85, 0.35], { emis: 1, noDepthWrite: true });
+    }
 
     if (W.water) G.draw(W.water, I, [1, 1, 1, 0.74], { wave: true, noDepthWrite: true, noCull: true });
 
+    // Schmetterlinge bei Tag über der Wiese
+    if (W.outdoor && this.nightFactor < 0.35 && this.weather < 0.4) {
+      const n = this.mobile ? 6 : 11;
+      for (let i = 0; i < n; i++) {
+        const a = this.time * (0.5 + i * 0.06) + i * 2.7;
+        const r = 5 + (i % 4) * 4;
+        const fx = this.player.x + Math.sin(a) * r, fz = this.player.z + Math.cos(a * 1.3) * r;
+        const fy = World.height(fx, fz);
+        if (fy < WATER_Y + 0.3) continue;
+        // zwei kleine Flügel statt eines Rechtecks
+        const flatter = Math.abs(Math.sin(this.time * 11 + i));
+        const farbe = [[1, 0.85, 0.35], [0.95, 0.6, 0.85], [0.6, 0.8, 1], [1, 0.95, 0.9]][i % 4];
+        const by = fy + 1.1 + Math.sin(this.time * 2 + i) * 0.45;
+        const spread = 0.06 + flatter * 0.07;
+        for (const s of [-1, 1])
+          G.sprite(fx + s * spread, by, fz, 0.17 * (0.45 + flatter * 0.8), 0.15,
+            farbe.concat([0.95]), { noDepthWrite: true, emis: 0.45, roll: s * 0.5 });
+      }
+    }
     // Glühwürmchen in lauen Nächten
     if (W.outdoor && this.nightFactor > 0.45 && this.weather < 0.3) {
       const n = this.mobile ? 12 : 22;
