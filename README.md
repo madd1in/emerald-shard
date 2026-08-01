@@ -26,22 +26,32 @@ Ahnen im Norden verkrochen. Ohne den Splitter welkt das Land. Hol ihn zurück.
 | `Q` · `F` · `1` | Bombe · Pfeil · Trank |
 | `M` · `Esc` | Musik · Pause |
 
+Schwert **gedrückt halten** lädt den Wirbelangriff auf — losgelassen trifft er rundum.
+
 **Touch (Handy/Tablet)** — linke Bildhälfte wischen bewegt (virtueller Stick), rechte Hälfte
-dreht die Kamera, Buttons rechts unten für Schwert, Rolle, Aktion, Schild, Bombe, Pfeil und Trank.
+dreht die Kamera. Buttons unten rechts in zwei Reihen: Schwert, Rolle, Aktion sowie Schild,
+Bombe, Pfeil, Bumerang und Trank. Startet automatisch im Vollbild und versucht, ins Querformat
+zu drehen; die Buttons skalieren mit der Bildschirmgröße.
 
 ## Inhalt
 
 - **Offene Overworld** — Dorf Ardun mit NPCs und Dialogen, Wald, See mit Insel zum Durchwaten,
   Bergpass, Ozeanrand, Feenquelle zum Heilen
 - **Tag/Nacht-Zyklus** — wandernde Sonne, Dämmerungsfärbung, Mond und Sternenhimmel;
-  nachts sind Gegner aufmerksamer und schneller, Fackeln leuchten
-- **Kampfsystem** — Schwertkombo mit Trefferkegel, Rückstoß, i-Frames, Ausweichrolle, Schildblock
-- **Fünf Gegnertypen** — Chuchu (hüpft), Moblin (telegrafierter Keulenschlag), Keese (fliegt),
-  Octorok (spuckt Steine aus der Distanz), Steingolem (Boss)
+  nachts sind Gegner aufmerksamer und schneller, Fackeln leuchten, Glühwürmchen tanzen
+- **Wetter** — aufziehender Regen mit Donner, Blitzen, gedämpftem Licht und kürzerer Sicht
+- **Kampfsystem** — Trefferkegel, Rückstoß, i-Frames, Ausweichrolle, Schildblock und
+  **aufladbarer Wirbelangriff**, der rundum trifft
+- **Sieben Gegnertypen** — Chuchu (hüpft), Riesen-Chuchu (teilt sich beim Tod), Moblin
+  (telegrafierter Keulenschlag), Keese (fliegt), Octorok (spuckt Steine), Stalfos (blockt
+  Angriffe von vorn — umgehen oder mit dem Bumerang betäuben), Steingolem (Boss)
 - **Bossfight** — Ansturm → Bodenschlag mit Schockwelle → Betäubungsfenster; nur dann verwundbar
-- **Dungeon** — vier Räume, verschlossene Tür mit Schlüssel, Töpfe, Fackeln, Bosstor
-- **Items** — Schwert, Schild, Bogen, Bomben (sprengen rissiges Gestein frei), Tränke,
-  Herzcontainer, Rubine
+- **Dungeon** — Räume mit verschlossener Tür, **Schieberätsel** mit Druckplatten und Gitter,
+  Töpfe, Fackeln, Bosstor
+- **Items** — Schwert, Schild, Bogen, Bomben (sprengen rissiges Gestein frei), **Bumerang**
+  (betäubt Gegner und zieht Fundstücke heran), Tränke, Herzcontainer, Rubine
+- **Herzteile** — vier Stück ergeben ein zusätzliches Herz; versteckt in der Welt
+- **Hühner** — friedlich, aber wer zu oft zuschlägt, wird von einem Schwarm heimgesucht
 - **Kramladen** — Rubine gegen Pfeile, Bomben, Tränke und Heilung
 - **Zielkompass** — zeigt Richtung und Entfernung zum nächsten Questziel
 - **Automatisches Speichern** — Fortschritt landet im Browser (localStorage), „Weiterspielen“ im Titelmenü
@@ -52,9 +62,13 @@ Kein Three.js, kein npm, kein Build — `index.html` öffnen genügt.
 
 - **Renderer** — eigener WebGL-Renderer mit Cel-Shading (Lichtbänder), Entfernungsnebel,
   Toon-Konturen über umgestülpte Rückflächen, Billboard-Sprites für Flammen und Effekte
-- **Texturen** — 4×4-Kachelatlas (512×512), zur Laufzeit per Canvas-2D gezeichnet: Gras,
-  Blumenwiese, Erde, Sand, Fels, Ziegel, Planken, Laub, Wasser, Dungeonboden, Schindeln u. a.
-  Große Flächen werden beim Aufbau in Kachelstücke unterteilt, damit nichts verzerrt
+- **Texturen** — 5×5-Kachelatlas (640×640), zur Laufzeit per Canvas-2D gezeichnet: Gras,
+  Blumenwiese, Erde, Sand, Fels, Ziegel, Planken, Laub, Wasser, Dungeonboden, Schindeln,
+  weicher Lichtschein und Grashalme mit Alphakante. Große Flächen werden beim Aufbau in
+  Kachelstücke unterteilt, damit nichts verzerrt
+- **Bewuchs & Wind** — zehntausende Grashalme sind fest ins Terrain-Mesh gebacken; ein
+  Vertex-Attribut steuert, was sich im Wind wiegt (Halme stark, Laub sanft, Stämme gar nicht)
+- **Wasser** — eigenes Netz nur dort, wo Wasser steht, mit eingebackenem Schaumsaum am Ufer
 - **HUD-Sprites** — Icon-Sheet (Herzen, Rubin, Schlüssel, Bombe, Pfeil, Trank, Schwert, Schild),
   ebenfalls prozedural erzeugt und als Data-URL eingebunden
 - **Audio** — MP3-Soundtrack mit weichem Crossfade und ortsabhängigem Wechsel (Dorf, Overworld,

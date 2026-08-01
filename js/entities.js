@@ -186,6 +186,52 @@ const Ents = (() => {
       D(root, PRIM.sphere, -0.26, 0.92 + hop, 0.38, 0, 0, 0, 0.1, 0.12, 0.08, [0.1, 0.1, 0.12]);
       D(root, PRIM.sphere, 0.26, 0.92 + hop, 0.38, 0, 0, 0, 0.1, 0.12, 0.08, [0.1, 0.1, 0.12]);
       shadow(e.x, e.groundY, e.z, 0.6, 0.3);
+    } else if (e.t === 'bigchuchu') {
+      const sq = 1 + Math.sin(e.anim * 5) * 0.14, S2 = 1.85;
+      const root = node(pool[2], null, e.x, e.y, e.z, 0, e.yaw, 0, S2, S2, S2);
+      P(root, PRIM.sphere, 0, 0.5 / sq, 0, 0, 0, 0, 1.05 * sq, 1.0 / sq, 1.05 * sq, T([0.72, 0.42, 0.92]));
+      D(root, PRIM.sphere, -0.22, 0.62, 0.36, 0, 0, 0, 0.18, 0.18, 0.1, [0.05, 0.05, 0.1]);
+      D(root, PRIM.sphere, 0.22, 0.62, 0.36, 0, 0, 0, 0.18, 0.18, 0.1, [0.05, 0.05, 0.1]);
+      shadow(e.x, e.groundY, e.z, 0.95, 0.32);
+    } else if (e.t === 'stalfos') {
+      const w = e.anim * 5, sw = e.speed > 0.3 ? Math.sin(w) * 0.5 : 0;
+      const root = node(pool[2], null, e.x, e.y, e.z, 0, e.yaw, 0, 1, 1, 1);
+      const bone = T(e.stunT > 0 ? [0.75, 0.75, 0.55] : [0.90, 0.88, 0.80]);
+      P(root, PRIM.box, -0.18, 0.4, 0, sw, 0, 0, 0.2, 0.8, 0.2, bone);
+      P(root, PRIM.box, 0.18, 0.4, 0, -sw, 0, 0, 0.2, 0.8, 0.2, bone);
+      P(root, PRIM.box, 0, 1.15, 0, 0, 0, 0, 0.62, 0.75, 0.4, bone);
+      for (let i = 0; i < 3; i++) D(root, PRIM.box, 0, 0.95 + i * 0.2, 0.21, 0, 0, 0, 0.66, 0.07, 0.06, [0.6, 0.58, 0.5]);
+      P(root, PRIM.box, 0, 1.78, 0, 0, 0, 0, 0.55, 0.52, 0.5, bone);
+      D(root, PRIM.box, -0.13, 1.78, 0.26, 0, 0, 0, 0.13, 0.14, 0.06, [0.9, 0.35, 0.15], { emis: 0.7 });
+      D(root, PRIM.box, 0.13, 1.78, 0.26, 0, 0, 0, 0.13, 0.14, 0.06, [0.9, 0.35, 0.15], { emis: 0.7 });
+      D(root, PRIM.box, 0, 1.6, 0.24, 0, 0, 0, 0.3, 0.1, 0.06, [0.35, 0.32, 0.28]);
+      // Schild vorne links — blockt Angriffe von vorn
+      P(root, PRIM.box, -0.52, 1.15, 0.34, 0, 0, 0, 0.18, 0.9, 0.7, T([0.42, 0.46, 0.55]));
+      D(root, PRIM.box, -0.6, 1.15, 0.34, 0, 0, 0, 0.06, 0.5, 0.4, COL.gold);
+      let ra = -0.2;
+      if (e.state === 'wind') ra = -1.8;
+      else if (e.state === 'swing') ra = U.lerp(-1.8, 1.0, U.smooth(U.clamp(1 - e.stateT / 0.24, 0, 1)));
+      const arm = node(pool[3], root, 0.5, 1.45, 0, ra, 0, 0, 1, 1, 1);
+      P(arm, PRIM.box, 0, -0.35, 0, 0, 0, 0, 0.17, 0.7, 0.17, bone);
+      P(arm, PRIM.box, 0, -0.95, 0, 0, 0, 0, 0.12, 1.0, 0.05, STEEL);
+      if (e.stunT > 0) G.sprite(e.x, e.y + 2.3, e.z, 0.9, 0.9, [1, 1, 0.4, 0.8], { emis: 1, noDepthWrite: true, noTex: true });
+      shadow(e.x, e.groundY, e.z, 0.5, 0.3);
+    } else if (e.t === 'cucco') {
+      const root = node(pool[2], null, e.x, e.y, e.z, 0, e.yaw, 0, 1, 1, 1);
+      const flap = e.panic > 0 ? Math.sin(time * 22) * 1.1 : Math.sin(time * 3 + e.seed) * 0.15;
+      const body = e.angry ? [1, 0.85, 0.85] : [1, 1, 0.98];
+      P(root, PRIM.sphere, 0, 0.42, 0, 0, 0, 0, 0.62, 0.58, 0.7, body);
+      P(root, PRIM.sphere, 0, 0.78, 0.16, 0, 0, 0, 0.34, 0.34, 0.34, body);
+      D(root, PRIM.cone, 0, 0.78, 0.36, Math.PI / 2, 0, 0, 0.14, 0.22, 0.14, [0.95, 0.72, 0.2]);
+      D(root, PRIM.box, 0, 0.98, 0.1, 0, 0, 0, 0.1, 0.16, 0.2, [0.9, 0.2, 0.2]);
+      D(root, PRIM.box, 0, 0.66, 0.28, 0, 0, 0, 0.09, 0.14, 0.08, [0.9, 0.2, 0.2]);
+      D(root, PRIM.sphere, -0.1, 0.82, 0.3, 0, 0, 0, 0.08, 0.08, 0.06, [0.1, 0.1, 0.1]);
+      D(root, PRIM.sphere, 0.1, 0.82, 0.3, 0, 0, 0, 0.08, 0.08, 0.06, [0.1, 0.1, 0.1]);
+      P(root, PRIM.box, -0.32, 0.44, 0, 0, 0, flap, 0.12, 0.34, 0.5, body);
+      P(root, PRIM.box, 0.32, 0.44, 0, 0, 0, -flap, 0.12, 0.34, 0.5, body);
+      D(root, PRIM.box, -0.12, 0.1, 0, 0, 0, 0, 0.07, 0.24, 0.07, [0.95, 0.72, 0.2]);
+      D(root, PRIM.box, 0.12, 0.1, 0, 0, 0, 0, 0.07, 0.24, 0.07, [0.95, 0.72, 0.2]);
+      shadow(e.x, e.groundY, e.z, 0.34, 0.24);
     } else if (e.t === 'boss') {
       const root = node(pool[2], null, e.x, e.y, e.z, 0, e.yaw, 0, 1, 1, 1);
       const vul = e.state === 'stun';
@@ -297,6 +343,40 @@ const Ents = (() => {
       P(root, PRIM.sphere, 0, 0, 0, 0, 0, 0, 1.1 * s, 1.0 * s, 1.1 * s, [0.75, 0.72, 0.70]);
     }
   }
+  /* Schiebeblock */
+  function drawBlock(b) {
+    const root = node(pool[2], null, b.x, 0, b.z, 0, 0, 0, 1, 1, 1);
+    P(root, PRIM.box, 0, 1.05, 0, 0, 0, 0, 2.1, 2.1, 2.1, [0.86, 0.84, 0.9]);
+    for (const s of [-1, 1]) {
+      D(root, PRIM.box, s * 1.02, 1.05, 0, 0, 0, 0, 0.1, 1.9, 1.9, COL.gold, { emis: 0.15 });
+      D(root, PRIM.box, 0, 1.05, s * 1.02, 0, 0, 0, 1.9, 1.9, 0.1, COL.gold, { emis: 0.15 });
+    }
+    shadow(b.x, 0, b.z, 1.1, 0.32);
+  }
+  /* Druckplatte */
+  function drawSwitch(s, time) {
+    const y = s.pressed ? 0.06 : 0.16;
+    const root = node(pool[2], null, s.x, 0, s.z, 0, 0, 0, 1, 1, 1);
+    P(root, PRIM.box, 0, 0.04, 0, 0, 0, 0, 2.3, 0.08, 2.3, [0.5, 0.5, 0.58]);
+    D(root, PRIM.box, 0, y, 0, 0, 0, 0, 1.9, 0.16, 1.9,
+      s.pressed ? [0.4, 1, 0.5] : [0.9, 0.7, 0.3], { emis: s.pressed ? 0.8 : 0.35 });
+  }
+  /* Bumerang */
+  function drawBoomerang(b, time) {
+    const root = node(pool[2], null, b.x, b.y, b.z, 0, b.spin, 0, 1, 1, 1);
+    P(root, PRIM.box, 0.18, 0, 0, 0, 0, 0, 0.62, 0.14, 0.2, [0.72, 0.5, 0.26]);
+    P(root, PRIM.box, 0, 0, 0.18, 0, Math.PI / 2, 0, 0.62, 0.14, 0.2, [0.72, 0.5, 0.26]);
+    G.sprite(b.x, b.y, b.z, 1.3, 1.3, [1, 0.95, 0.6, 0.3], { emis: 1, noDepthWrite: true, noTex: true });
+  }
+  /* Herzteil (Viertel eines Containers) */
+  function drawHeartPiece(h, time) {
+    const root = node(pool[2], null, h.x, h.y + 0.7 + Math.sin(time * 2) * 0.12, h.z, 0, time * 1.4, 0, 1, 1, 1);
+    const O = { emis: 0.6 };
+    D(root, PRIM.box, -0.16, 0.12, 0, 0, 0, 0.5, 0.34, 0.34, 0.26, [1, 0.35, 0.45], O);
+    D(root, PRIM.box, 0.16, 0.12, 0, 0, 0, -0.5, 0.34, 0.34, 0.26, [1, 0.35, 0.45], O);
+    D(root, PRIM.box, 0, -0.14, 0, 0, 0, 0.78, 0.34, 0.34, 0.26, [1, 0.35, 0.45], O);
+    G.sprite(h.x, h.y + 0.8, h.z, 2.2, 2.2, [1, 0.5, 0.6, 0.22], { emis: 1, noDepthWrite: true, noTex: true });
+  }
   function drawShockwave(s) {
     node(pool[2], null, s.x, s.y + 0.06, s.z, 0, 0, 0, s.r * 2, 1, s.r * 2);
     G.draw(PRIM.disc, pool[2], [1, 0.85, 0.4, U.clamp(s.life, 0, 0.55)], { noDepthWrite: true, emis: 0.7, noTex: true });
@@ -317,6 +397,9 @@ const Ents = (() => {
     if (t === 'moblin') Object.assign(base, { hp: 4, maxhp: 4, r: 0.85, dmg: 2, agro: 18, spd: 3.0 });
     if (t === 'keese') Object.assign(base, { hp: 1, maxhp: 1, r: 0.5, dmg: 1, agro: 16, spd: 5.0, fly: true });
     if (t === 'octorok') Object.assign(base, { hp: 3, maxhp: 3, r: 0.7, dmg: 1, agro: 22, spd: 1.6 });
+    if (t === 'bigchuchu') Object.assign(base, { hp: 5, maxhp: 5, r: 1.1, dmg: 2, agro: 17, spd: 3.0, splits: true });
+    if (t === 'stalfos') Object.assign(base, { hp: 4, maxhp: 4, r: 0.7, dmg: 2, agro: 19, spd: 3.4, shielded: true, stunT: 0 });
+    if (t === 'cucco') Object.assign(base, { hp: 99, maxhp: 99, r: 0.45, dmg: 1, agro: 8, spd: 3.2, peaceful: true, panic: 0, pecks: 0 });
     if (t === 'boss') Object.assign(base, { hp: 14, maxhp: 14, r: 2.3, dmg: 3, agro: 100, spd: 3.2, boss: true, cycle: 0 });
     return base;
   }
@@ -340,7 +423,14 @@ const Ents = (() => {
     let vx = 0, vz = 0;
     const spd = e.spd * (night ? 1.15 : 1);
 
-    if (e.t === 'chuchu') {
+    if (e.stunT > 0) {                       // vom Bumerang betäubt
+      e.stunT -= dt; e.speed = 0;
+      e.groundY = World.height(e.x, e.z);
+      if (!e.fly) e.y = e.groundY;
+      return;
+    }
+
+    if (e.t === 'chuchu' || e.t === 'bigchuchu') {
       if (e.state === 'idle' && e.stateT <= 0) { e.state = 'hop'; e.stateT = 0.55; e.vy = 4.2; }
       if (e.state === 'hop') {
         if (canSee) { vx = dx / d * spd; vz = dz / d * spd; }
@@ -375,6 +465,47 @@ const Ents = (() => {
         vx = dx / d * s + Math.cos(e.anim * 3 + e.seed) * 1.6;
         vz = dz / d * s + Math.sin(e.anim * 3 + e.seed) * 1.6;
       } else { vx = Math.cos(e.anim * 1.2 + e.seed) * 2.0; vz = Math.sin(e.anim * 1.1 + e.seed) * 2.0; }
+    } else if (e.t === 'stalfos') {
+      // Schildträger: hält den Schild zum Spieler, greift aus der Nähe an
+      if (e.state === 'idle') {
+        if (canSee) {
+          if (d < 2.7) { e.state = 'wind'; e.stateT = 0.38; }
+          else {
+            const strafe = Math.sin(e.anim * 1.4 + e.seed) * 0.7;   // seitliches Umkreisen
+            vx = (dx / d) * spd + (-dz / d) * strafe * spd;
+            vz = (dz / d) * spd + (dx / d) * strafe * spd;
+          }
+        }
+      } else if (e.state === 'wind') {
+        if (e.stateT <= 0) { e.state = 'swing'; e.stateT = 0.24; e.didHit = false; Snd.swing(); }
+      } else if (e.state === 'swing') {
+        if (!e.didHit && e.stateT < 0.15) {
+          e.didHit = true;
+          if (d < 3.0 && Math.abs(U.angDiff(e.yaw, Math.atan2(dx, dz))) < 1.1) g.damagePlayer(e.dmg, e.x, e.z);
+        }
+        if (e.stateT <= 0) { e.state = 'rest'; e.stateT = 0.5; }
+      } else if (e.state === 'rest') { if (e.stateT <= 0) e.state = 'idle'; }
+      e.y = e.groundY;
+    } else if (e.t === 'cucco') {
+      // Friedlich — flieht; nach genug Schlägen ruft es Rache herbei
+      e.y = e.groundY + (e.hopY || 0);
+      if (e.panic > 0) {
+        e.panic -= dt;
+        const a = Math.atan2(-dx, -dz) + Math.sin(e.anim * 6) * 0.4;
+        vx = Math.sin(a) * spd * 1.6; vz = Math.cos(a) * spd * 1.6;
+        e.hopY = Math.abs(Math.sin(e.anim * 12)) * 0.45;
+      } else if (e.angry) {
+        vx = dx / d * spd * 1.5; vz = dz / d * spd * 1.5;
+        e.hopY = Math.abs(Math.sin(e.anim * 14)) * 0.9;
+        if (d < 1.3) g.damagePlayer(1, e.x, e.z);
+      } else if (canSee && d < 3.2) {
+        const a = Math.atan2(-dx, -dz);
+        vx = Math.sin(a) * spd * 0.8; vz = Math.cos(a) * spd * 0.8;
+        e.hopY = 0;
+      } else {
+        e.hopY = 0;
+        if (Math.sin(e.anim * 0.6 + e.seed) > 0.6) { vx = Math.cos(e.seed * 9) * 1.1; vz = Math.sin(e.seed * 9) * 1.1; }
+      }
     } else if (e.t === 'octorok') {
       e.y = e.groundY;
       if (e.state === 'idle') {
@@ -431,17 +562,19 @@ const Ents = (() => {
     }
 
     e.groundY = World.height(e.x, e.z);
-    if (!e.fly && e.t !== 'chuchu') e.y = e.groundY;
-    if (e.t === 'chuchu' && e.y < e.groundY) e.y = e.groundY;
+    const hops = (e.t === 'chuchu' || e.t === 'bigchuchu');
+    if (!e.fly && !hops && e.t !== 'cucco') e.y = e.groundY;
+    if (hops && e.y < e.groundY) e.y = e.groundY;
 
-    if (e.t !== 'boss' && d < e.r + 0.55 && !p.dead) {
-      if (e.t !== 'moblin' || e.state === 'idle') g.damagePlayer(e.dmg, e.x, e.z);
+    if (e.t !== 'boss' && !e.peaceful && d < e.r + 0.55 && !p.dead) {
+      if ((e.t !== 'moblin' && e.t !== 'stalfos') || e.state === 'idle') g.damagePlayer(e.dmg, e.x, e.z);
     }
   }
 
   return {
     drawPlayer, drawNPC, drawEnemy, drawGrass, drawPot, drawChest, drawSign,
     drawCrack, drawDoor, drawPickup, drawProjectile, drawShockwave, drawFlame, shadow,
+    drawBlock, drawSwitch, drawBoomerang, drawHeartPiece,
     makeEnemy, updateEnemy, node, P, settings: S
   };
 })();

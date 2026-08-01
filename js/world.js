@@ -88,6 +88,22 @@ const World = {
     }
     this.clouds = G.upload(cm);
 
+    /* Regen: zwei identische Etagen übereinander, damit das Herunterschieben
+       nahtlos umlaufen kann (eine Etage tritt an die Stelle der anderen) */
+    const rm = new MeshData(), rrng = mulberry32(5150), RH = 24, RN = Math.round(420 * QUALITY.rain);
+    for (let i = 0; i < RN; i++) {
+      const x = (rrng() - 0.5) * 44, z = (rrng() - 0.5) * 44, y0 = rrng() * RH;
+      const len = 0.9 + rrng() * 1.1, w = 0.035;
+      const c = [0.72, 0.82, 0.95];
+      for (const off of [0, RH]) {
+        const y = y0 + off;
+        rm.quad([x - w, y, z], [x - w, y + len, z], [x + w, y + len, z], [x + w, y, z], c, TILE.blank);
+        rm.quad([x, y, z - w], [x, y + len, z - w], [x, y + len, z + w], [x, y, z + w], c, TILE.blank);
+      }
+    }
+    this.rain = G.upload(rm);
+    this.rainH = RH;
+
     // Sternenrichtungen (feste Positionen am Himmelszelt)
     const srng = mulberry32(913);
     this.stars = [];
@@ -105,20 +121,41 @@ const World = {
     const colliders = [];
     const spawns = { enemies: [], props: [], grass: [], npcs: [], chests: [] };
 
-    /* Terrain */
+    /* Terrain mit Mulden-Verschattung und eingebackenem Grasbewuchs */
     const S = 2.4, N = Math.ceil((WORLD_R + 16) * 2 / S), O = -(WORLD_R + 16);
+    const grassMd = new MeshData();
     for (let i = 0; i < N; i++) {
       for (let j = 0; j < N; j++) {
         const x0 = O + i * S, z0 = O + j * S, x1 = x0 + S, z1 = z0 + S;
         const h00 = this.height(x0, z0), h10 = this.height(x1, z0), h11 = this.height(x1, z1), h01 = this.height(x0, z1);
         if (h00 < WATER_Y - 5 && h10 < WATER_Y - 5 && h11 < WATER_Y - 5 && h01 < WATER_Y - 5) continue;
         const hm = (h00 + h10 + h11 + h01) / 4;
+        const cx = x0 + S / 2, cz = z0 + S / 2;
         const slope = (Math.abs(h00 - h11) + Math.abs(h10 - h01)) / (S * 1.4);
-        const tile = this.terrainTile(x0 + S / 2, z0 + S / 2, hm, slope);
-        const v = 0.94 + rng() * 0.12;
+        const tile = this.terrainTile(cx, cz, hm, slope);
+        // Umgebungsverdeckung: Senken und steile Hänge werden dunkler
+        const nb = (this.height(cx - S, cz) + this.height(cx + S, cz) + this.height(cx, cz - S) + this.height(cx, cz + S)) / 4;
+        const ao = U.clamp(1 - U.clamp((nb - hm) * 0.34, 0, 0.38) - U.clamp(slope * 0.16, 0, 0.22), 0.55, 1);
+        const v = (0.94 + rng() * 0.12) * ao;
         md.quad([x0, h00, z0], [x0, h01, z1], [x1, h11, z1], [x1, h10, z0], [v, v, v], tile);
+
+        // Grasbüschel auf Wiesenkacheln
+        if (QUALITY.grass > 0 && (tile === TILE.grass || tile === TILE.grassFlower) && hm > WATER_Y + 0.6 && hm < 9) {
+          const n = QUALITY.grass >= 1 ? 3 : 1;
+          for (let k = 0; k < n; k++) {
+            if (rng() > 0.72) continue;
+            const gx = x0 + rng() * S, gz = z0 + rng() * S;
+            const gy = this.height(gx, gz);
+            if (gy < WATER_Y + 0.4) continue;
+            const tall = 0.3 + rng() * 0.34;
+            const shade = (0.85 + rng() * 0.4) * ao;
+            grassMd.blade(gx, gy - 0.04, gz, 0.42 + rng() * 0.26, tall,
+              [shade, shade, shade], TILE.blade, rng() * 3);
+          }
+        }
       }
     }
+    this.grassMesh = grassMd;
 
     const free = (x, z, r) => {
       for (const c of colliders) {
@@ -131,11 +168,21 @@ const World = {
 
     const tree = (x, z, s) => {
       const y = this.height(x, z);
+      props.sway = 0;
       props.cylinder(x, y + 1.5 * s, z, 0.42 * s, 0.30 * s, 3.0 * s, 6, COL.wood, TILE.plank);
       const lc = [COL.leaf, COL.leaf2, COL.leaf3][Math.floor(rng() * 3)];
-      props.cylinder(x, y + 3.6 * s, z, 1.9 * s, 0.05, 2.4 * s, 7, lc, TILE.leaf);
-      props.cylinder(x, y + 5.0 * s, z, 1.45 * s, 0.05, 2.0 * s, 7, [lc[0] * 1.06, lc[1] * 1.06, lc[2] * 1.06], TILE.leaf);
-      props.cylinder(x, y + 6.1 * s, z, 0.95 * s, 0.05, 1.6 * s, 7, lc, TILE.leaf);
+      props.sway = 0.55;                                   // Laub wiegt sich im Wind
+      if (rng() < 0.34) {                                  // Laubbaum
+        props.cylinder(x, y + 2.6 * s, z, 0.34 * s, 0.2 * s, 1.4 * s, 6, COL.wood, TILE.plank);
+        props.sphere(x, y + 4.2 * s, z, 2.0 * s, lc, 8, 6, 0.85, TILE.leaf);
+        props.sphere(x - 1.1 * s, y + 3.5 * s, z + 0.6 * s, 1.25 * s, [lc[0] * 0.94, lc[1] * 0.94, lc[2] * 0.94], 7, 5, 0.9, TILE.leaf);
+        props.sphere(x + 1.0 * s, y + 3.7 * s, z - 0.7 * s, 1.15 * s, [lc[0] * 1.05, lc[1] * 1.05, lc[2] * 1.05], 7, 5, 0.9, TILE.leaf);
+      } else {                                             // Nadelbaum
+        props.cylinder(x, y + 3.6 * s, z, 1.9 * s, 0.05, 2.4 * s, 7, lc, TILE.leaf);
+        props.cylinder(x, y + 5.0 * s, z, 1.45 * s, 0.05, 2.0 * s, 7, [lc[0] * 1.06, lc[1] * 1.06, lc[2] * 1.06], TILE.leaf);
+        props.cylinder(x, y + 6.1 * s, z, 0.95 * s, 0.05, 1.6 * s, 7, lc, TILE.leaf);
+      }
+      props.sway = 0;
       colliders.push({ x, z, r: 0.8 * s });
     };
     const rock = (x, z, s) => {
@@ -329,11 +376,26 @@ const World = {
       outdoor: true
     };
 
+    this.over.grass = G.upload(this.grassMesh);
+    this.grassMesh = null;
+
+    /* Wasser: nur dort, wo es welches gibt — mit Schaumsaum am Ufer */
     const wm = new MeshData();
-    const WS = 8, WN = 34, WO = -136;
+    const WS = 3.5, WO = -140, WN = Math.ceil(-WO * 2 / WS);
+    const foamCol = (x, z) => {
+      const d = WATER_Y - this.height(x, z);             // Tiefe
+      const f = U.clamp(1 - d / 0.9, 0, 1);              // flach -> Schaum
+      const k = 0.75 + U.clamp(d * 0.25, 0, 0.3);
+      return [k + f * 0.9, k + f * 0.9, k + f * 0.85];
+    };
     for (let i = 0; i < WN; i++) for (let j = 0; j < WN; j++) {
-      const x0 = WO + i * WS, z0 = WO + j * WS;
-      wm.quad([x0, WATER_Y, z0], [x0, WATER_Y, z0 + WS], [x0 + WS, WATER_Y, z0 + WS], [x0 + WS, WATER_Y, z0], COL.water, TILE.water);
+      const x0 = WO + i * WS, z0 = WO + j * WS, x1 = x0 + WS, z1 = z0 + WS;
+      const hs = [this.height(x0, z0), this.height(x1, z0), this.height(x1, z1), this.height(x0, z1)];
+      if (Math.min.apply(null, hs) > WATER_Y + 0.15) continue;   // hier ist Land
+      wm.triVC([x0, WATER_Y, z0], [x0, WATER_Y, z1], [x1, WATER_Y, z1],
+        foamCol(x0, z0), foamCol(x0, z1), foamCol(x1, z1), TILE.water, [0, 0], [0, 1], [1, 1]);
+      wm.triVC([x0, WATER_Y, z0], [x1, WATER_Y, z1], [x1, WATER_Y, z0],
+        foamCol(x0, z0), foamCol(x1, z1), foamCol(x1, z0), TILE.water, [0, 0], [1, 1], [1, 0]);
     }
     this.over.water = G.upload(wm);
   },
@@ -391,18 +453,27 @@ const World = {
     const en = (t, r, c) => { const p = t2w(r, c); spawns.enemies.push({ t, x: p.x, z: p.z }); };
     const pot = (r, c) => { const p = t2w(r, c); spawns.pots.push({ x: p.x, z: p.z }); };
 
-    en('moblin', 17, 13); en('moblin', 20, 19); en('chuchu', 18, 16); en('chuchu', 21, 13);
-    pot(16, 12); pot(16, 20); pot(21, 20); pot(21, 12);
-    en('chuchu', 16, 3); en('chuchu', 18, 5); en('chuchu', 21, 2); en('chuchu', 20, 6); en('keese', 17, 4);
-    { const p = t2w(18, 2); spawns.chests.push({ x: p.x, z: p.z, item: 'heart_container', label: 'Herzcontainer' }); }
-    en('keese', 16, 27); en('keese', 20, 29); en('moblin', 18, 28); en('moblin', 21, 26); en('octorok', 17, 30);
+    en('moblin', 17, 12); en('stalfos', 20, 19); en('chuchu', 18, 16); en('bigchuchu', 21, 14);
+    pot(15, 11); pot(15, 21); pot(22, 21); pot(22, 11);
+    en('chuchu', 16, 3); en('stalfos', 18, 5); en('chuchu', 21, 2); en('chuchu', 20, 6); en('keese', 17, 4);
+    { const p = t2w(18, 2); spawns.chests.push({ x: p.x, z: p.z, item: 'boomerang', label: 'Bumerang' }); }
+    en('keese', 16, 27); en('keese', 20, 29); en('moblin', 18, 28); en('stalfos', 21, 26); en('octorok', 17, 30);
     { const p = t2w(18, 30); spawns.chests.push({ x: p.x, z: p.z, item: 'key', label: 'Kleiner Schlüssel' }); }
+    { const p = t2w(16, 26); spawns.chests.push({ x: p.x, z: p.z, item: 'heartpiece', label: 'Herzteil' }); }
     pot(15, 25); pot(22, 31);
+
+    /* Schieberätsel: beide Blöcke auf die Druckplatten -> Gitter zum Ostraum öffnet */
+    this.dun_puzzle = {
+      switches: [t2w(16, 13), t2w(21, 19)],
+      blocks: [t2w(19, 13), t2w(18, 19)],
+      gate: t2w(18, 22)
+    };
     en('boss', 5, 16);
     { const p = t2w(3, 16); spawns.chests.push({ x: p.x, z: p.z, item: 'shard', label: 'Smaragdsplitter', hidden: true }); }
 
     this.dun = {
       mesh: G.upload(md), glow: G.upload(glow), colliders, spawns, lights, baseCol: colliders.length,
+      puzzle: this.dun_puzzle,
       door: { x: t2w(12, 16).x, z: t2w(12, 16).z, open: false },
       bossGate: t2w(11, 16), exit: t2w(30, 16), start: t2w(29, 16),
       bossRoom: { minX: t2w(2, 8).x - T / 2, maxX: t2w(2, 24).x + T / 2, minZ: t2w(2, 8).z - T / 2, maxZ: t2w(10, 8).z + T / 2 },

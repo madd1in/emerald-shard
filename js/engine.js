@@ -14,6 +14,9 @@ const U = {
   angDiff(a, b) { let d = (b - a) % (Math.PI * 2); if (d > Math.PI) d -= Math.PI * 2; if (d < -Math.PI) d += Math.PI * 2; return d; },
   angLerp(a, b, t) { return a + U.angDiff(a, b) * t; }
 };
+/* Detailstufe — vor World.build() gesetzt (Handy = sparsamer) */
+const QUALITY = { grass: 1, rain: 1 };
+
 function mulberry32(a) {
   return function () {
     a |= 0; a = (a + 0x6D2B79F5) | 0;
@@ -110,12 +113,12 @@ function normalFromMat4(out, a) {
    TEXTURATLAS  (4x4 Kacheln, prozedural gezeichnet)
    ========================================================= */
 const TILE = {
-  grass: 0, grassFlower: 1, dirt: 2, sand: 3,
-  rock: 4, brick: 5, plank: 6, leaf: 7,
-  water: 8, dunFloor: 9, dunWall: 10, shingle: 11,
-  plaster: 12, metal: 13, blank: 14, gravel: 15
+  grass: 0, grassFlower: 1, dirt: 2, sand: 3, glow: 4,
+  rock: 5, brick: 6, plank: 7, leaf: 8, spark: 9,
+  water: 10, dunFloor: 11, dunWall: 12, shingle: 13, blade: 14,
+  plaster: 15, metal: 16, blank: 17, gravel: 18
 };
-const ATLAS_N = 4, TILE_PX = 128, TILE_PAD = 0.03;
+const ATLAS_N = 5, TILE_PX = 128, TILE_PAD = 0.03;
 
 function tileUV(tile, u, v, out) {
   const cx = tile % ATLAS_N, cy = Math.floor(tile / ATLAS_N), s = 1 / ATLAS_N;
@@ -128,6 +131,7 @@ function buildAtlasCanvas() {
   const cv = document.createElement('canvas');
   cv.width = cv.height = ATLAS_N * TILE_PX;
   const x = cv.getContext('2d');
+  x.clearRect(0, 0, cv.width, cv.height);
   const rnd = mulberry32(4242);
   const P = TILE_PX;
   const cell = (t) => ({ ox: (t % ATLAS_N) * P, oy: Math.floor(t / ATLAS_N) * P });
@@ -254,6 +258,7 @@ function buildAtlasCanvas() {
   fill(TILE.shingle, '#9c3f34');
   {
     const { ox, oy } = cell(TILE.shingle);
+    x.save(); x.beginPath(); x.rect(ox, oy, P, P); x.clip();   // nicht in Nachbarkacheln malen
     for (let r = 0; r < 5; r++) {
       for (let c = 0; c < 5; c++) {
         const xx = ox + c * P / 5 + (r % 2) * P / 10, yy = oy + r * P / 5;
@@ -263,6 +268,7 @@ function buildAtlasCanvas() {
         x.lineTo(xx + P / 10, yy + P / 5); x.lineTo(xx, yy + P / 5 * 0.8); x.closePath(); x.fill();
       }
     }
+    x.restore();
   }
   // Putzwand
   fill(TILE.plaster, '#ddd0b0');
@@ -282,6 +288,49 @@ function buildAtlasCanvas() {
   // Schotter / Bergfels
   fill(TILE.gravel, '#5e5a5e');
   speck(TILE.gravel, 260, ['#6b6770', '#524e56', '#767280', '#464349'], 5, 18);
+
+  // Weicher Lichtschein (Alpha-Verlauf) — für Flammen, Funkeln, Sterne
+  {
+    const { ox, oy } = cell(TILE.glow);
+    const g = x.createRadialGradient(ox + P / 2, oy + P / 2, 0, ox + P / 2, oy + P / 2, P / 2 - 2);
+    g.addColorStop(0, 'rgba(255,255,255,1)');
+    g.addColorStop(0.45, 'rgba(255,255,255,0.55)');
+    g.addColorStop(1, 'rgba(255,255,255,0)');
+    x.fillStyle = g; x.fillRect(ox, oy, P, P);
+  }
+  // Vierzackiger Funke
+  {
+    const { ox, oy } = cell(TILE.spark);
+    const cxp = ox + P / 2, cyp = oy + P / 2;
+    const g = x.createRadialGradient(cxp, cyp, 0, cxp, cyp, P / 2 - 2);
+    g.addColorStop(0, 'rgba(255,255,255,1)');
+    g.addColorStop(0.3, 'rgba(255,255,255,0.35)');
+    g.addColorStop(1, 'rgba(255,255,255,0)');
+    x.fillStyle = g; x.beginPath(); x.arc(cxp, cyp, P / 2 - 2, 0, 7); x.fill();
+    x.strokeStyle = 'rgba(255,255,255,0.9)'; x.lineWidth = 5; x.lineCap = 'round';
+    x.beginPath();
+    x.moveTo(cxp, oy + 8); x.lineTo(cxp, oy + P - 8);
+    x.moveTo(ox + 8, cyp); x.lineTo(ox + P - 8, cyp);
+    x.stroke();
+  }
+  // Grashalm mit weichen Rändern
+  {
+    const { ox, oy } = cell(TILE.blade);
+    for (let i = 0; i < 7; i++) {
+      const bx = ox + 10 + i * ((P - 20) / 6), bw = 7 + rnd() * 6;
+      const g2 = x.createLinearGradient(0, oy + P, 0, oy);
+      g2.addColorStop(0, 'rgba(70,120,50,1)');
+      g2.addColorStop(0.6, 'rgba(120,190,80,1)');
+      g2.addColorStop(1, 'rgba(160,220,110,0.35)');
+      x.fillStyle = g2;
+      x.beginPath();
+      x.moveTo(bx - bw / 2, oy + P);
+      x.quadraticCurveTo(bx + (rnd() - 0.5) * 22, oy + P * 0.4, bx + (rnd() - 0.5) * 26, oy + 6);
+      x.lineTo(bx + bw / 2 + 3, oy + 10);
+      x.quadraticCurveTo(bx + bw, oy + P * 0.5, bx + bw / 2, oy + P);
+      x.closePath(); x.fill();
+    }
+  }
 
   return cv;
 }
@@ -385,11 +434,36 @@ function buildIconSheet() {
 
 /* ---------------- Mesh-Builder (mit UVs) ---------------- */
 const _uv = [0, 0];
-function MeshData() { this.p = []; this.n = []; this.c = []; this.u = []; }
+/* sway: aktueller Windfaktor; alles danach Erzeugte wiegt sich im Wind */
+function MeshData() { this.p = []; this.n = []; this.c = []; this.u = []; this.s = []; this.sway = 0; }
 MeshData.prototype = {
   vert(px, py, pz, nx, ny, nz, col, tile, tu, tv) {
     this.p.push(px, py, pz); this.n.push(nx, ny, nz); this.c.push(col[0], col[1], col[2]);
     tileUV(tile, tu, tv, _uv); this.u.push(_uv[0], _uv[1]);
+    this.s.push(this.sway);
+  },
+  /* Grashalm: zwei gekreuzte Quads */
+  blade(x, y, z, w, h, col, tile, rot, sway) {
+    const old = this.sway;
+    for (let k = 0; k < 2; k++) {
+      const a = (rot || 0) + k * Math.PI / 2;
+      const dx = Math.cos(a) * w * 0.5, dz = Math.sin(a) * w * 0.5;
+      this.sway = 0;
+      const b0 = [x - dx, y, z - dz], b1 = [x + dx, y, z + dz];
+      this.sway = sway === undefined ? 1 : sway;
+      const t0 = [x + dx, y + h, z + dz], t1 = [x - dx, y + h, z - dz];
+      this.sway = 0;
+      this.vert(b0[0], b0[1], b0[2], 0, 1, 0, col, tile, 0, 1);
+      this.vert(b1[0], b1[1], b1[2], 0, 1, 0, col, tile, 1, 1);
+      this.sway = sway === undefined ? 1 : sway;
+      this.vert(t0[0], t0[1], t0[2], 0, 1, 0, col, tile, 1, 0);
+      this.sway = 0;
+      this.vert(b0[0], b0[1], b0[2], 0, 1, 0, col, tile, 0, 1);
+      this.sway = sway === undefined ? 1 : sway;
+      this.vert(t0[0], t0[1], t0[2], 0, 1, 0, col, tile, 1, 0);
+      this.vert(t1[0], t1[1], t1[2], 0, 1, 0, col, tile, 0, 0);
+    }
+    this.sway = old;
   },
   tri(a, b, c, col, tile, uvA, uvB, uvC) {
     let ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2];
@@ -401,14 +475,15 @@ MeshData.prototype = {
     this.vert(c[0], c[1], c[2], nx, ny, nz, col, tile, uvC[0], uvC[1]);
   },
   /* Dreieck mit eigener Farbe je Eckpunkt (weiche Verläufe) */
-  triVC(a, b, c, ca, cb, cc, tile) {
+  triVC(a, b, c, ca, cb, cc, tile, uvA, uvB, uvC) {
     let ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2];
     let vx = c[0] - a[0], vy = c[1] - a[1], vz = c[2] - a[2];
     let nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
     const l = Math.hypot(nx, ny, nz) || 1; nx /= l; ny /= l; nz /= l;
-    this.vert(a[0], a[1], a[2], nx, ny, nz, ca, tile, 0.5, 0.5);
-    this.vert(b[0], b[1], b[2], nx, ny, nz, cb, tile, 0.5, 0.5);
-    this.vert(c[0], c[1], c[2], nx, ny, nz, cc, tile, 0.5, 0.5);
+    const A = uvA || [0.5, 0.5], B = uvB || [0.5, 0.5], C = uvC || [0.5, 0.5];
+    this.vert(a[0], a[1], a[2], nx, ny, nz, ca, tile, A[0], A[1]);
+    this.vert(b[0], b[1], b[2], nx, ny, nz, cb, tile, B[0], B[1]);
+    this.vert(c[0], c[1], c[2], nx, ny, nz, cc, tile, C[0], C[1]);
   },
   quad(a, b, c, d, col, tile) {
     tile = tile === undefined ? TILE.blank : tile;
@@ -503,8 +578,9 @@ MeshData.prototype = {
 /* ---------------- Shader ---------------- */
 const VS = `
 attribute vec3 a_pos; attribute vec3 a_norm; attribute vec3 a_col; attribute vec2 a_uv;
+attribute float a_sway;
 uniform mat4 u_proj, u_view, u_model; uniform mat3 u_nmat;
-uniform float u_time, u_wave, u_fogNear, u_fogFar;
+uniform float u_time, u_wave, u_fogNear, u_fogFar, u_windMul;
 uniform mediump float u_outline;
 varying vec3 v_norm; varying vec3 v_col; varying vec2 v_uv; varying float v_fog;
 void main(){
@@ -512,6 +588,12 @@ void main(){
   if(u_wave > 0.5){ p.y += sin(p.x*0.32 + u_time*1.7)*0.16 + cos(p.z*0.38 + u_time*1.2)*0.14; }
   p += a_norm * u_outline;
   vec4 wp = u_model * vec4(p,1.0);
+  // Wind: Gras und Laub wiegen sich (a_sway steuert die Stärke je Vertex)
+  if(a_sway > 0.001){
+    float s = a_sway * u_windMul;
+    wp.x += sin(u_time*1.6 + wp.x*0.35 + wp.z*0.22) * s * 0.16;
+    wp.z += cos(u_time*1.25 + wp.z*0.31 + wp.x*0.18) * s * 0.12;
+  }
   vec4 vp = u_view * wp;
   gl_Position = u_proj * vp;
   v_norm = u_nmat * a_norm;
@@ -539,7 +621,9 @@ void main(){
   vec3 c = base * (band*u_lightCol + u_ambCol + sky*0.06);
   c = mix(c, base, u_emis);
   c = mix(c, u_fogColor, v_fog * (1.0 - u_emis));   // Leuchtendes ignoriert den Nebel
-  gl_FragColor = vec4(c, u_tint.a);
+  float a = u_tint.a * mix(1.0, tex.a, u_texMix);   // Kacheln mit Alpha (Lichtschein, Halme)
+  if(a < 0.02) discard;
+  gl_FragColor = vec4(c, a);
 }`;
 
 const G = {
@@ -565,13 +649,14 @@ const G = {
     if (!gl.getProgramParameter(p, gl.LINK_STATUS)) { console.error(gl.getProgramInfoLog(p)); return false; }
     gl.useProgram(p); this.prog = p;
     for (const n of ['u_proj', 'u_view', 'u_model', 'u_nmat', 'u_time', 'u_wave', 'u_fogNear', 'u_fogFar',
-      'u_lightDir', 'u_fogColor', 'u_tint', 'u_emis', 'u_outline', 'u_tex', 'u_texMix', 'u_lightCol', 'u_ambCol'])
+      'u_lightDir', 'u_fogColor', 'u_tint', 'u_emis', 'u_outline', 'u_tex', 'u_texMix', 'u_lightCol', 'u_ambCol', 'u_windMul'])
       this.loc[n] = gl.getUniformLocation(p, n);
     this.loc.a_pos = gl.getAttribLocation(p, 'a_pos');
     this.loc.a_norm = gl.getAttribLocation(p, 'a_norm');
     this.loc.a_col = gl.getAttribLocation(p, 'a_col');
     this.loc.a_uv = gl.getAttribLocation(p, 'a_uv');
-    for (const a of [this.loc.a_pos, this.loc.a_norm, this.loc.a_col, this.loc.a_uv]) gl.enableVertexAttribArray(a);
+    this.loc.a_sway = gl.getAttribLocation(p, 'a_sway');
+    for (const a of [this.loc.a_pos, this.loc.a_norm, this.loc.a_col, this.loc.a_uv, this.loc.a_sway]) gl.enableVertexAttribArray(a);
 
     // Atlas hochladen
     const cv = buildAtlasCanvas();
@@ -596,13 +681,14 @@ const G = {
 
   upload(md) {
     const gl = this.gl, n = md.p.length / 3;
-    const arr = new Float32Array(n * 11);
+    const arr = new Float32Array(n * 12);
     for (let i = 0; i < n; i++) {
-      const o = i * 11;
+      const o = i * 12;
       arr[o] = md.p[i * 3]; arr[o + 1] = md.p[i * 3 + 1]; arr[o + 2] = md.p[i * 3 + 2];
       arr[o + 3] = md.n[i * 3]; arr[o + 4] = md.n[i * 3 + 1]; arr[o + 5] = md.n[i * 3 + 2];
       arr[o + 6] = md.c[i * 3]; arr[o + 7] = md.c[i * 3 + 1]; arr[o + 8] = md.c[i * 3 + 2];
       arr[o + 9] = md.u[i * 2]; arr[o + 10] = md.u[i * 2 + 1];
+      arr[o + 11] = md.s[i] || 0;
     }
     const buf = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, buf);
@@ -610,7 +696,7 @@ const G = {
     return { buf, count: n };
   },
 
-  frame(fog, fogNear, fogFar, ambCol, lightCol, lightDir, time) {
+  frame(fog, fogNear, fogFar, ambCol, lightCol, lightDir, time, wind) {
     const gl = this.gl;
     gl.viewport(0, 0, this.canvas.width, this.canvas.height);
     gl.clearColor(fog[0], fog[1], fog[2], 1);
@@ -622,6 +708,7 @@ const G = {
     gl.uniform3fv(this.loc.u_lightCol, lightCol);
     gl.uniform3fv(this.loc.u_lightDir, lightDir);
     gl.uniform1f(this.loc.u_time, time);
+    gl.uniform1f(this.loc.u_windMul, wind === undefined ? 1 : wind);
     gl.uniformMatrix4fv(this.loc.u_proj, false, this.proj);
     gl.uniformMatrix4fv(this.loc.u_view, false, this.view);
     this.drawCalls = 0;
@@ -631,10 +718,11 @@ const G = {
     const gl = this.gl;
     opt = opt || {};
     gl.bindBuffer(gl.ARRAY_BUFFER, mesh.buf);
-    gl.vertexAttribPointer(this.loc.a_pos, 3, gl.FLOAT, false, 44, 0);
-    gl.vertexAttribPointer(this.loc.a_norm, 3, gl.FLOAT, false, 44, 12);
-    gl.vertexAttribPointer(this.loc.a_col, 3, gl.FLOAT, false, 44, 24);
-    gl.vertexAttribPointer(this.loc.a_uv, 2, gl.FLOAT, false, 44, 36);
+    gl.vertexAttribPointer(this.loc.a_pos, 3, gl.FLOAT, false, 48, 0);
+    gl.vertexAttribPointer(this.loc.a_norm, 3, gl.FLOAT, false, 48, 12);
+    gl.vertexAttribPointer(this.loc.a_col, 3, gl.FLOAT, false, 48, 24);
+    gl.vertexAttribPointer(this.loc.a_uv, 2, gl.FLOAT, false, 48, 36);
+    gl.vertexAttribPointer(this.loc.a_sway, 1, gl.FLOAT, false, 48, 44);
     normalFromMat4(this._nmat, model);
     gl.uniformMatrix4fv(this.loc.u_model, false, model);
     gl.uniformMatrix3fv(this.loc.u_nmat, false, this._nmat);
@@ -667,7 +755,9 @@ const G = {
     // Billboards sind einseitig: Culling abschalten, sonst verschwinden sie je nach Blickwinkel
     const o = opt ? Object.assign({}, opt) : {};
     o.noCull = true; o.blend = true;
-    this.draw(PRIM.quad, this._bb, tint, o);
+    const prim = o.hard ? PRIM.quad : (o.spark ? PRIM.sparkQuad : PRIM.glowQuad);
+    if (o.noTex) o.noTex = false;             // Lichtschein braucht seine Alpha-Kachel
+    this.draw(prim, this._bb, tint, o);
   }
 };
 
@@ -680,13 +770,18 @@ function buildPrims() {
   m = new MeshData(); m.cylinder(0, 0, 0, 0.5, 0.5, 1, 10, w); PRIM.cyl = G.upload(m);
   m = new MeshData(); m.cylinder(0, 0, 0, 0.5, 0, 1, 10, w); PRIM.cone = G.upload(m);
   m = new MeshData(); m.disc(0, 0, 0, 0.5, w, 18); PRIM.disc = G.upload(m);
+  const flat = (tile) => {
+    const q = new MeshData();
+    q.quad([-0.5, -0.5, 0], [-0.5, 0.5, 0], [0.5, 0.5, 0], [0.5, -0.5, 0], w, tile);
+    return G.upload(q);
+  };
+  PRIM.quad = flat(TILE.blank);
+  PRIM.glowQuad = flat(TILE.glow);
+  PRIM.sparkQuad = flat(TILE.spark);
   m = new MeshData();
-  m.quad([-0.5, -0.5, 0], [-0.5, 0.5, 0], [0.5, 0.5, 0], [0.5, -0.5, 0], w, TILE.blank);
-  PRIM.quad = G.upload(m);
-  m = new MeshData();
-  for (let i = 0; i < 5; i++) {
-    const a = (i / 5) * Math.PI * 2, r = 0.22;
-    m.cylinder(Math.cos(a) * r, 0.22, Math.sin(a) * r, 0.09, 0, 0.55, 4, w, TILE.grass);
+  for (let i = 0; i < 4; i++) {
+    const a = (i / 4) * Math.PI * 2;
+    m.blade(0, 0, 0, 0.55, 0.62, w, TILE.blade, a);
   }
   PRIM.tuft = G.upload(m);
 }

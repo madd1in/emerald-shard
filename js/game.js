@@ -32,6 +32,7 @@ const Game = {
       document.body.classList.add('touch');
       Ents.settings.outline = 0;               // Konturen kosten Zeichenaufrufe
       this.camDist = 11.5;
+      QUALITY.grass = 0.4; QUALITY.rain = 0.5;
     }
     buildPrims();
     World.build();
@@ -66,11 +67,15 @@ const Game = {
   reset(keepSave) {
     this.player = {
       x: 0, z: 70, y: 0, yaw: Math.PI, speed: 0, walkPhase: 0,
-      hp: 6, maxhp: 6, rupees: 0, keys: 0, bombs: 0, arrows: 0, potions: 0,
-      items: { sword: false, shield: false, bow: false, bomb: false },
+      hp: 6, maxhp: 6, rupees: 0, keys: 0, bombs: 0, arrows: 0, potions: 0, pieces: 0,
+      items: { sword: false, shield: false, bow: false, bomb: false, boomerang: false },
       invuln: 0, attackT: 0, attackDur: 0.36, hitList: [], rollT: 0, rollDir: { x: 0, z: 1 },
-      dead: false, stepT: 0, blocking: false, kbT: 0, kbx: 0, kbz: 0
+      dead: false, stepT: 0, blocking: false, kbT: 0, kbx: 0, kbz: 0,
+      charge: 0, spinT: 0
     };
+    this.blocks = []; this.switches = []; this.heartPieces = []; this.boomerang = null;
+    this.fireflies = []; this.rainT = 0; this.weather = 0; this.weatherTimer = 45;
+    this.cuccoRage = 0;
     this.enemies = []; this.pickups = []; this.projectiles = []; this.particles = [];
     this.shockwaves = []; this.chests = []; this.grass = []; this.pots = [];
     this.npcs = []; this.signs = []; this.cracks = []; this.doors = []; this.lights = [];
@@ -103,6 +108,16 @@ const Game = {
     }
     for (const cr of this.cracks) World.over.colliders.push(cr.col = { x: cr.x, z: cr.z, r: 1.7 });
 
+    // Hühner im Dorf
+    for (const c of [[-6, 60], [4, 69], [-3, 74], [13, 63], [-16, 71]]) {
+      const cu = Ents.makeEnemy('cucco', c[0], c[1]);
+      cu.scene = 'over'; cu.groundY = World.height(c[0], c[1]); cu.y = cu.groundY; cu.id = 'cu' + c[0];
+      this.enemies.push(cu);
+    }
+    // Herzteile: vier Stück ergeben einen Container
+    for (const h of [{ x: 60, z: 6, id: 'hp1' }, { x: -92, z: 40, id: 'hp2' }, { x: 86, z: -30, id: 'hp3' }])
+      this.heartPieces.push({ x: h.x, z: h.z, y: World.height(h.x, h.z), id: h.id, scene: 'over' });
+
     this.spawnDungeon();
     this.updateHUD();
     if (!keepSave) this.objective = 'elder';
@@ -132,6 +147,19 @@ const Game = {
     this.doors.push({ x: D.door.x, z: D.door.z, y: 0, col: dcol, locked: true, scene: 'dun' });
     this.gateCol = { x: D.bossGate.x, z: D.bossGate.z, hx: 1.7, hz: 1.0, disabled: true };
     D.colliders.push(this.gateCol);
+
+    /* Schieberätsel */
+    this.blocks = []; this.switches = [];
+    for (const b of D.puzzle.blocks) {
+      const col = { x: b.x, z: b.z, hx: 1.05, hz: 1.05 };
+      D.colliders.push(col);
+      this.blocks.push({ x: b.x, z: b.z, tx: b.x, tz: b.z, col, scene: 'dun', moving: false });
+    }
+    for (const s of D.puzzle.switches) this.switches.push({ x: s.x, z: s.z, pressed: false, scene: 'dun' });
+    this.puzzleGate = { x: D.puzzle.gate.x, z: D.puzzle.gate.z, hx: 1.7, hz: 1.7, disabled: false };
+    D.colliders.push(this.puzzleGate);
+    this.puzzleSolved = false;
+
     this.bossDead = false; this.bossActive = false;
   },
 
@@ -143,13 +171,15 @@ const Game = {
       localStorage.setItem(SAVE_KEY, JSON.stringify({
         v: 1, x: p.x, z: p.z, scene: World.scene, yaw: p.yaw,
         hp: p.hp, maxhp: p.maxhp, rupees: p.rupees, keys: p.keys,
-        bombs: p.bombs, arrows: p.arrows, potions: p.potions, items: p.items,
+        bombs: p.bombs, arrows: p.arrows, potions: p.potions, pieces: p.pieces, items: p.items,
         dayT: this.dayT, bossDead: this.bossDead, hasShard: this.hasShard,
         objective: this.objective, talkedElder: this.talkedElder,
         chests: this.chests.filter(c => c.opened).map(c => c.id),
         kills: this.enemies.filter(e => e.dead).map(e => e.id),
         cracks: this.cracks.map(c => !!c.broken),
-        doors: this.doors.map(d => !d.locked)
+        doors: this.doors.map(d => !d.locked),
+        hearts: this.heartPieces.filter(h => h.taken).map(h => h.id),
+        puzzle: this.puzzleSolved
       }));
     } catch (e) { /* Speicher voll oder gesperrt */ }
   },
@@ -160,8 +190,10 @@ const Game = {
     const p = this.player;
     Object.assign(p, {
       x: s.x, z: s.z, yaw: s.yaw, hp: s.hp, maxhp: s.maxhp, rupees: s.rupees,
-      keys: s.keys, bombs: s.bombs, arrows: s.arrows, potions: s.potions || 0
+      keys: s.keys, bombs: s.bombs, arrows: s.arrows, potions: s.potions || 0, pieces: s.pieces || 0
     });
+    for (const h of this.heartPieces) if ((s.hearts || []).indexOf(h.id) >= 0) h.taken = true;
+    if (s.puzzle) { this.puzzleSolved = true; this.puzzleGate.disabled = true; for (const sw of this.switches) sw.pressed = true; }
     p.items = Object.assign(p.items, s.items || {});
     this.dayT = s.dayT || 0.32;
     this.hasShard = !!s.hasShard;
@@ -199,10 +231,14 @@ const Game = {
       if (e.code === 'KeyE') this.interact();
       if (e.code === 'KeyQ') this.useBomb();
       if (e.code === 'KeyF') this.useBow();
+      if (e.code === 'KeyC') this.useBoomerang();
       if (e.code === 'Digit1') this.usePotion();
       if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') this.roll();
     });
-    window.addEventListener('keyup', e => { this.keys[e.code] = false; });
+    window.addEventListener('keyup', e => {
+      this.keys[e.code] = false;
+      if (e.code === 'Space' || e.code === 'KeyJ') this.releaseAttack();
+    });
 
     this.canvas.addEventListener('mousedown', e => {
       if (this.mobile) return;
@@ -210,10 +246,13 @@ const Game = {
       if (this.state === 'dialog') { this.advanceDialog(); return; }
       if (this.state !== 'play') return;
       if (!this.mouse.locked) { this.canvas.requestPointerLock(); return; }
-      if (e.button === 0) this.attack();
+      if (e.button === 0) { this.attack(); this.mouseAttack = true; }
       if (e.button === 2) this.mouseBlock = true;
     });
-    this.canvas.addEventListener('mouseup', e => { if (e.button === 2) this.mouseBlock = false; });
+    this.canvas.addEventListener('mouseup', e => {
+      if (e.button === 2) this.mouseBlock = false;
+      if (e.button === 0) { this.mouseAttack = false; this.releaseAttack(); }
+    });
     this.canvas.addEventListener('contextmenu', e => e.preventDefault());
     document.addEventListener('pointerlockchange', () => {
       this.mouse.locked = document.pointerLockElement === this.canvas;
@@ -295,13 +334,27 @@ const Game = {
       el.addEventListener('touchend', off); el.addEventListener('touchcancel', off);
       el.addEventListener('click', e => { e.preventDefault(); });
     };
-    bind('btnA', () => this.attack());
+    bind('btnA', () => { this.attack(); this.touchAttack = true; }, () => { this.touchAttack = false; this.releaseAttack(); });
     bind('btnRoll', () => this.roll());
     bind('btnE', () => { if (this.state === 'dialog') this.advanceDialog(); else this.interact(); });
     bind('btnBomb', () => this.useBomb());
     bind('btnBow', () => this.useBow());
+    bind('btnBoom', () => this.useBoomerang());
     bind('btnShield', () => { this.player.blocking = true; }, () => { this.player.blocking = false; });
     bind('btnPotion', () => this.usePotion());
+  },
+
+  /* Vollbild + Querformat beim Start (nur mit Nutzergeste erlaubt) */
+  goFullscreen() {
+    const el = document.documentElement;
+    const req = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
+    if (req && !document.fullscreenElement) {
+      const p = req.call(el);
+      if (p && p.catch) p.catch(() => { });
+    }
+    if (screen.orientation && screen.orientation.lock) {
+      try { const q = screen.orientation.lock('landscape'); if (q && q.catch) q.catch(() => { }); } catch (e) { }
+    }
   },
 
   toggleMusic() {
@@ -317,6 +370,7 @@ const Game = {
 
   start(cont) {
     Snd.init(); Snd.resume();
+    if (this.mobile) { this.goFullscreen(); setTimeout(() => this.resize(), 350); }
     let loaded = false;
     if (cont) loaded = this.load();
     document.getElementById('title').style.display = 'none';
@@ -348,9 +402,31 @@ const Game = {
   attack() {
     const p = this.player;
     if (!p.items.sword) { this.toast('Du hast noch keine Waffe!'); return; }
-    if (p.attackT > 0 || p.rollT > 0 || p.dead) return;
+    if (p.attackT > 0 || p.rollT > 0 || p.spinT > 0 || p.dead) return;
     p.attackT = p.attackDur; p.hitList = [];
     Snd.swing();
+  },
+  /* Gedrückthalten lädt den Wirbelangriff auf */
+  releaseAttack() {
+    const p = this.player;
+    if (p.charge >= 1 && p.items.sword && !p.dead) {
+      p.spinT = 0.55; p.hitList = []; p.attackT = 0;
+      Snd.noise(0.4, 0.3, 2200); Snd.tone(520, 0.4, 'square', 0.18, 200);
+      this.burst(p.x, p.y + 1, p.z, 24, [1, 0.95, 0.5], 5);
+      this.shake = 0.25;
+    }
+    p.charge = 0;
+  },
+  useBoomerang() {
+    const p = this.player;
+    if (!p.items.boomerang) return;
+    if (this.boomerang) return;
+    const fx = Math.sin(p.yaw), fz = Math.cos(p.yaw);
+    this.boomerang = {
+      x: p.x + fx, y: p.y + 1.2, z: p.z + fz, vx: fx * 22, vz: fz * 22,
+      spin: 0, t: 0, back: false, scene: World.scene, hit: []
+    };
+    Snd.tone(880, 0.18, 'triangle', 0.14, 1500);
   },
   roll() {
     const p = this.player;
@@ -448,10 +524,25 @@ const Game = {
       case 'rupee20': p.rupees += 20; this.toast('20 Rubine!'); break;
       case 'potion': p.potions++; this.toast(this.mobile ? 'Roter Trank!' : 'Roter Trank! [1] zum Trinken', 4); break;
       case 'key': p.keys++; this.toast('Kleiner Schlüssel!'); this.objective = 'door'; break;
+      case 'boomerang': p.items.boomerang = true; this.toast(this.mobile ? 'Bumerang! Betäubt Gegner.' : 'Bumerang! [C] wirft ihn — betäubt Gegner.', 5); break;
+      case 'heartpiece': this.gainHeartPiece(); break;
       case 'heart_container': p.maxhp += 2; p.hp = p.maxhp; Snd.heart(); this.toast('Herzcontainer! Maximale Energie erhöht.', 4); break;
       case 'shard': this.win(); break;
     }
     this.burst(c.x, c.y + 1.2, c.z, 20, [1, 0.9, 0.4], 4);
+    this.updateHUD(); this.save();
+  },
+
+  gainHeartPiece() {
+    const p = this.player;
+    p.pieces++;
+    if (p.pieces >= 4) {
+      p.pieces = 0; p.maxhp += 2; p.hp = p.maxhp;
+      Snd.fanfare(); this.toast('Vier Herzteile — ein ganzer Herzcontainer!', 5);
+    } else {
+      Snd.heart(); this.toast('Herzteil ' + p.pieces + '/4', 3);
+    }
+    this.burst(p.x, p.y + 1.2, p.z, 18, [1, 0.4, 0.5], 4);
     this.updateHUD(); this.save();
   },
 
@@ -535,6 +626,17 @@ const Game = {
 
   hitEnemy(e, dmg, fromX, fromZ, knock) {
     if (e.dead) return;
+    if (e.peaceful) { this.angerCucco(e, fromX, fromZ); return; }
+    // Stalfos blockt Treffer von vorn — von hinten oder betäubt ist er offen
+    if (e.shielded && e.stunT <= 0 && dmg > 0) {
+      const a = Math.atan2(fromX - e.x, fromZ - e.z);
+      if (Math.abs(U.angDiff(e.yaw, a)) < 1.15) {
+        Snd.tone(1400, 0.1, 'square', 0.16, 800);
+        this.burst(e.x + Math.sin(a) * 0.7, e.y + 1.2, e.z + Math.cos(a) * 0.7, 6, [1, 1, 0.7], 3);
+        e.kbx = -Math.sin(a) * 2; e.kbz = -Math.cos(a) * 2;
+        return;
+      }
+    }
     if (e.boss && e.state !== 'stun') {
       Snd.tone(1200, 0.09, 'square', 0.14, 700);
       this.burst(e.x, e.y + 3, e.z, 5, [1, 1, 0.6], 3);
@@ -566,11 +668,43 @@ const Game = {
       return;
     }
     Snd.tone(160, 0.2, 'sawtooth', 0.14, 60);
+    if (e.splits) {                          // Riesen-Chuchu zerfällt in zwei kleine
+      for (let i = 0; i < 2; i++) {
+        const a = i * Math.PI + Math.random();
+        const c = Ents.makeEnemy('chuchu', e.x + Math.sin(a) * 1.6, e.z + Math.cos(a) * 1.6);
+        c.scene = e.scene; c.groundY = World.height(c.x, c.z); c.y = c.groundY + 1;
+        c.vy = 4; c.id = e.id + '_' + i;
+        this.enemies.push(c);
+      }
+      this.toast('Es teilt sich!', 2);
+    }
     const r = Math.random();
     if (r < 0.30) this.spawnPickup(e.x, e.z, 'rupee');
     else if (r < 0.40) this.spawnPickup(e.x, e.z, 'rupee5');
     else if (r < 0.58) this.spawnPickup(e.x, e.z, 'heart');
     else if (r < 0.66 && this.player.items.bow) this.spawnPickup(e.x, e.z, 'arrow');
+  },
+
+  /* Hühner: wer zu oft zuschlägt, bekommt Besuch */
+  angerCucco(e, fromX, fromZ) {
+    e.pecks = (e.pecks || 0) + 1;
+    e.panic = 3.5;
+    Snd.tone(900, 0.12, 'square', 0.16, 1400);
+    Snd.tone(1200, 0.1, 'square', 0.12, 700, 0.1);
+    this.burst(e.x, e.y + 0.6, e.z, 8, [1, 1, 0.95], 3);
+    const a = Math.atan2(e.x - fromX, e.z - fromZ);
+    e.kbx = Math.sin(a) * 7; e.kbz = Math.cos(a) * 7;
+    if (e.pecks >= 4 && !this.cuccoRage) {
+      this.cuccoRage = 14;
+      this.toast('Die Hühner sind erzürnt!', 3);
+      for (let i = 0; i < 7; i++) {
+        const ang = (i / 7) * Math.PI * 2;
+        const c = Ents.makeEnemy('cucco', this.player.x + Math.sin(ang) * 12, this.player.z + Math.cos(ang) * 12);
+        c.scene = World.scene; c.angry = true; c.agro = 90;
+        c.groundY = World.height(c.x, c.z); c.y = c.groundY; c.id = 'rage' + i;
+        this.enemies.push(c);
+      }
+    }
   },
 
   spawnPickup(x, z, kind) {
@@ -585,6 +719,13 @@ const Game = {
   },
   shockwave(x, z, maxR, dmg) {
     this.shockwaves.push({ x, z, y: World.height(x, z), r: 1, maxR, dmg, life: 0.55, scene: World.scene, hit: false });
+  },
+  burstAt(x, y, z, col) {
+    if (this.particles.length > (this.mobile ? 180 : 340)) return;
+    this.particles.push({
+      x, y, z, vx: 0, vy: 1.2, vz: 0, life: 0.25, maxlife: 0.25, size: 0.09,
+      col, scene: World.scene
+    });
   },
   burst(x, y, z, n, col, spread) {
     const cap = this.mobile ? 180 : 340;
@@ -705,10 +846,11 @@ const Game = {
     document.getElementById('bombs').textContent = p.items.bomb ? p.bombs : '–';
     document.getElementById('arrows').textContent = p.items.bow ? p.arrows : '–';
     document.getElementById('potions').textContent = p.potions;
-    const bb = document.getElementById('btnBow'), bm = document.getElementById('btnBomb'), bp = document.getElementById('btnPotion');
-    if (bb) bb.style.opacity = p.items.bow ? 1 : 0.35;
-    if (bm) bm.style.opacity = p.items.bomb ? 1 : 0.35;
-    if (bp) bp.style.opacity = p.potions > 0 ? 1 : 0.35;
+    const pc = document.getElementById('pieces');
+    if (pc) pc.textContent = p.pieces + '/4';
+    const setOp = (id, on) => { const el = document.getElementById(id); if (el) el.style.opacity = on ? 1 : 0.35; };
+    setOp('btnBow', p.items.bow); setOp('btnBomb', p.items.bomb);
+    setOp('btnPotion', p.potions > 0); setOp('btnBoom', p.items.boomerang);
   },
 
   /* Musik nach Ort wählen */
@@ -754,12 +896,27 @@ const Game = {
     W.light = [Math.cos(ang) * 0.6, Math.max(0.18, Math.abs(elev)), 0.35];
     W.fogFar = U.lerp(110, 195, day);
     this.skyTint = mix([0.10, 0.13, 0.30], mix([1, 1, 1], [1.15, 0.72, 0.5], dusk), day);
+    // Regen drückt Licht und Sicht
+    if (this.weather > 0.01) {
+      const w = this.weather;
+      W.fog = mix(W.fog, [0.40, 0.43, 0.50], w * 0.75);
+      W.amb = mix(W.amb, [0.28, 0.30, 0.36], w * 0.6);
+      W.lightCol = mix(W.lightCol, [0.40, 0.43, 0.48], w * 0.7);
+      W.fogFar = U.lerp(W.fogFar, 85, w * 0.7);
+      this.skyTint = mix(this.skyTint, [0.48, 0.51, 0.58], w * 0.8);
+    }
+    if (this.lightning > 0) {                       // Blitz erhellt die Szene kurz
+      const f = this.lightning * 2.2;
+      W.amb = [W.amb[0] + f, W.amb[1] + f, W.amb[2] + f];
+      this.skyTint = [this.skyTint[0] + f, this.skyTint[1] + f, this.skyTint[2] + f];
+    }
   },
 
   update(dt) {
     this.time += dt;
     BGM.update();
     if (World.scene === 'over') this.updateDayNight(dt);
+    this.updateWeather(dt);
     if (this.shake > 0) this.shake = Math.max(0, this.shake - dt * 1.6);
     if (this.keys['ArrowLeft']) this.camYaw += dt * 2.2;
     if (this.keys['ArrowRight']) this.camYaw -= dt * 2.2;
@@ -777,8 +934,36 @@ const Game = {
     if (p.invuln > 0) p.invuln -= dt;
     if (p.attackT > 0) p.attackT -= dt;
     if (p.rollT > 0) p.rollT -= dt;
+    if (p.spinT > 0) p.spinT -= dt;
     if (p.kbT > 0) p.kbT -= dt;
     if (!this.mobile) p.blocking = !!this.keys['KeyK'] || !!this.mouseBlock;
+
+    // Schwert aufladen -> Wirbelangriff
+    const holding = this.keys['Space'] || this.keys['KeyJ'] || this.mouseAttack || this.touchAttack;
+    if (holding && p.items.sword && p.attackT <= 0 && p.spinT <= 0 && !p.dead) {
+      const was = p.charge;
+      p.charge = Math.min(1, p.charge + dt / 0.62);
+      if (was < 1 && p.charge >= 1) Snd.tone(1200, 0.12, 'triangle', 0.12, 1800);
+    } else if (!holding && p.charge > 0 && p.charge < 1) p.charge = 0;
+    if (p.charge > 0.25 && p.spinT <= 0) {
+      const a = this.time * 9;
+      for (let i = 0; i < 3; i++)
+        this.burstAt(p.x + Math.sin(a + i * 2.1) * 1.1, p.y + 0.9, p.z + Math.cos(a + i * 2.1) * 1.1,
+          p.charge >= 1 ? [1, 0.95, 0.4] : [0.7, 0.85, 1]);
+    }
+    // Wirbelangriff trifft rundum
+    if (p.spinT > 0) {
+      for (const e of this.enemies) {
+        if (e.dead || e.scene !== World.scene || e.sleeping || p.hitList.indexOf(e) >= 0) continue;
+        if (U.dist(p.x, p.z, e.x, e.z) < 3.4 + e.r) {
+          p.hitList.push(e);
+          this.hitEnemy(e, 2, p.x, p.z, 13);
+        }
+      }
+      for (const g of this.grass) if (!g.cut && g.scene === World.scene && U.dist(p.x, p.z, g.x, g.z) < 3.2) this.cutGrass(g);
+      for (const o of this.pots) if (!o.broken && o.scene === World.scene && U.dist(p.x, p.z, o.x, o.z) < 3.2) this.breakPot(o);
+      p.yaw += dt * 22;
+    }
 
     const inWater = World.inWater(p.x, p.z);
     let m = this.moveInput();
@@ -942,6 +1127,112 @@ const Game = {
 
     for (const q of this.particles) { q.life -= dt; q.vy -= 15 * dt; q.x += q.vx * dt; q.y += q.vy * dt; q.z += q.vz * dt; }
     this.particles = this.particles.filter(q => q.life > 0);
+
+    /* Bumerang: fliegt hin, kehrt zurück, betäubt und sammelt ein */
+    const b = this.boomerang;
+    if (b) {
+      b.t += dt; b.spin += dt * 22;
+      if (!b.back && (b.t > 0.42 || World.blockedStatic(b.x, b.z, 0.3))) b.back = true;
+      if (b.back) {
+        const a = Math.atan2(p.x - b.x, p.z - b.z);
+        const sp = 26;
+        b.vx = Math.sin(a) * sp; b.vz = Math.cos(a) * sp;
+        b.y = U.lerp(b.y, p.y + 1.2, Math.min(1, dt * 6));
+      }
+      b.x += b.vx * dt; b.z += b.vz * dt;
+      for (const e of this.enemies) {
+        if (e.dead || e.scene !== b.scene || e.sleeping || b.hit.indexOf(e) >= 0) continue;
+        if (U.dist(b.x, b.z, e.x, e.z) < e.r + 0.7) {
+          b.hit.push(e);
+          if (e.peaceful) this.angerCucco(e, b.x, b.z);
+          else if (e.boss) this.hitEnemy(e, 0, b.x, b.z);
+          else { e.stunT = 2.2; e.state = 'idle'; this.hitEnemy(e, 1, b.x, b.z, 4); }
+        }
+      }
+      for (const pk of this.pickups) if (pk.scene === b.scene && U.dist(b.x, b.z, pk.x, pk.z) < 1.6) { pk.x = b.x; pk.z = b.z; }
+      for (const g of this.grass) if (!g.cut && g.scene === b.scene && U.dist(b.x, b.z, g.x, g.z) < 1.2) this.cutGrass(g);
+      if (b.back && U.dist(b.x, b.z, p.x, p.z) < 1.2) { this.boomerang = null; Snd.tone(700, 0.1, 'triangle', 0.1, 400); }
+      if (b.t > 4) this.boomerang = null;
+    }
+
+    /* Schiebeblöcke */
+    for (const bl of this.blocks) {
+      if (bl.scene !== sc) continue;
+      if (bl.moving) {
+        bl.x = U.lerp(bl.x, bl.tx, Math.min(1, dt * 7));
+        bl.z = U.lerp(bl.z, bl.tz, Math.min(1, dt * 7));
+        bl.col.x = bl.x; bl.col.z = bl.z;
+        if (Math.abs(bl.x - bl.tx) < 0.04 && Math.abs(bl.z - bl.tz) < 0.04) {
+          bl.x = bl.tx; bl.z = bl.tz; bl.col.x = bl.x; bl.col.z = bl.z; bl.moving = false;
+          this.checkSwitches();
+        }
+        continue;
+      }
+      const d = U.dist(p.x, p.z, bl.x, bl.z);
+      if (d < 2.4 && p.speed > 2) {
+        const dx = bl.x - p.x, dz = bl.z - p.z;
+        let ux = 0, uz = 0;
+        if (Math.abs(dx) > Math.abs(dz)) ux = Math.sign(dx); else uz = Math.sign(dz);
+        const T = World.dunT;
+        const nx = bl.x + ux * T, nz = bl.z + uz * T;
+        bl.col.disabled = true;
+        const frei = !World.blockedStatic(nx, nz, 1.0);
+        bl.col.disabled = false;
+        if (frei) {
+          bl.tx = nx; bl.tz = nz; bl.moving = true;
+          Snd.noise(0.35, 0.2, 700); Snd.tone(90, 0.3, 'square', 0.12, 60);
+        }
+      }
+    }
+
+    /* Herzteile einsammeln */
+    for (const h of this.heartPieces) {
+      if (h.taken || h.scene !== sc) continue;
+      if (U.dist(h.x, h.z, p.x, p.z) < 1.6) { h.taken = true; this.gainHeartPiece(); }
+    }
+
+    if (this.cuccoRage > 0) {
+      this.cuccoRage -= dt;
+      if (this.cuccoRage <= 0) {
+        this.enemies = this.enemies.filter(e => !e.angry);
+        this.toast('Die Hühner beruhigen sich.', 2);
+      }
+    }
+  },
+
+  /* Beide Platten gedrückt -> Gitter öffnet */
+  checkSwitches() {
+    if (this.puzzleSolved) return;
+    let alle = true;
+    for (const s of this.switches) {
+      s.pressed = this.blocks.some(b => U.dist(b.x, b.z, s.x, s.z) < 1.2);
+      if (!s.pressed) alle = false;
+    }
+    if (alle && this.switches.length) {
+      this.puzzleSolved = true;
+      this.puzzleGate.disabled = true;
+      Snd.door(); Snd.fanfare();
+      this.toast('Ein Gitter öffnet sich!', 3);
+      this.save();
+    }
+  },
+
+  updateWeather(dt) {
+    if (World.scene !== 'over') { this.weather = Math.max(0, this.weather - dt); return; }
+    this.weatherTimer -= dt;
+    if (this.weatherTimer <= 0) {
+      this.weatherTimer = 70 + Math.random() * 120;
+      this.raining = !this.raining && Math.random() < 0.45;
+      if (this.raining) this.toast('Es beginnt zu regnen.', 2.5);
+    }
+    const ziel = this.raining ? 1 : 0;
+    this.weather = U.lerp(this.weather, ziel, Math.min(1, dt * 0.35));
+    this.rainT = (this.rainT + dt * 26) % World.rainH;
+    if (this.raining && Math.random() < dt * 0.06) {         // Donner
+      Snd.noise(1.2, 0.22, 300); Snd.tone(60, 0.9, 'sine', 0.16, 30);
+      this.lightning = 0.35;
+    }
+    if (this.lightning > 0) this.lightning -= dt;
   },
 
   updateCamera(dt) {
@@ -1012,6 +1303,7 @@ const Game = {
     }
 
     G.draw(W.mesh, I, [1, 1, 1]);
+    if (W.grass) G.draw(W.grass, I, [1, 1, 1], { noCull: true });
     if (W.props) G.draw(W.props, I, [1, 1, 1]);
     if (W.glow) G.draw(W.glow, I, [1, 1, 1], { emis: 0.95 });
 
@@ -1025,8 +1317,12 @@ const Game = {
     for (const n of this.npcs) if (n.scene === sc) Ents.drawNPC(n, this.time);
     for (const e of this.enemies) if (e.scene === sc && !e.dead && !e.sleeping) Ents.drawEnemy(e, this.time);
     if (this.boss && this.boss.sleeping && sc === 'dun' && !this.boss.dead) Ents.drawEnemy(this.boss, this.time);
+    for (const bl of this.blocks) if (bl.scene === sc) Ents.drawBlock(bl);
+    for (const sw of this.switches) if (sw.scene === sc) Ents.drawSwitch(sw, this.time);
+    for (const h of this.heartPieces) if (!h.taken && h.scene === sc) Ents.drawHeartPiece(h, this.time);
     for (const pk of this.pickups) if (pk.scene === sc) Ents.drawPickup(pk, this.time);
     for (const pr of this.projectiles) if (pr.scene === sc) Ents.drawProjectile(pr, this.time);
+    if (this.boomerang && this.boomerang.scene === sc) Ents.drawBoomerang(this.boomerang, this.time);
     if (!this.player.dead) Ents.drawPlayer(this.player, this.time);
 
     // Flammen (nachts / im Dungeon heller)
@@ -1048,9 +1344,43 @@ const Game = {
 
     if (W.water) G.draw(W.water, I, [1, 1, 1, 0.74], { wave: true, noDepthWrite: true, noCull: true });
 
+    // Glühwürmchen in lauen Nächten
+    if (W.outdoor && this.nightFactor > 0.45 && this.weather < 0.3) {
+      const n = this.mobile ? 12 : 22;
+      for (let i = 0; i < n; i++) {
+        const a = this.time * (0.3 + i * 0.017) + i * 2.3;
+        const r = 6 + (i % 5) * 3.5;
+        const fx = this.player.x + Math.sin(a) * r, fz = this.player.z + Math.cos(a * 0.8) * r;
+        const fy = World.height(fx, fz) + 0.9 + Math.sin(this.time * 1.7 + i) * 0.6;
+        const bl = 0.45 + 0.55 * Math.sin(this.time * 3 + i * 1.7);
+        if (bl < 0.15) continue;
+        G.sprite(fx, fy, fz, 0.3, 0.3, [0.85, 1, 0.4, bl * this.nightFactor], { emis: 1, noDepthWrite: true, noTex: true });
+      }
+    }
+    // Regen (zwei Etagen, damit das Umlaufen nahtlos bleibt)
+    if (W.outdoor && this.weather > 0.02) {
+      const rm = M4.create();
+      M4.compose(rm, Math.round(this.player.x), this.player.y - 4 - this.rainT, Math.round(this.player.z), 0, 0, 0, 1, 1, 1);
+      G.draw(World.rain, rm, [0.75, 0.85, 1, 0.42 * this.weather], { noDepthWrite: true, noCull: true, emis: 0.75, noTex: true });
+    }
+
     this.drawMinimap();
     this.drawBossBar();
     this.drawCompass();
+    this.drawStatusUI();
+  },
+
+  drawStatusUI() {
+    const p = this.player;
+    const cb = document.getElementById('chargebar');
+    if (cb) {
+      if (p.charge > 0.06 && p.spinT <= 0) {
+        cb.style.display = 'block';
+        cb.classList.toggle('full', p.charge >= 1);
+        document.getElementById('chargefill').style.width = (p.charge * 100) + '%';
+      } else cb.style.display = 'none';
+    }
+    document.body.classList.toggle('lowhp', !p.dead && p.hp > 0 && p.hp <= 2);
   },
 
   drawBossBar() {
